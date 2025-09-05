@@ -374,7 +374,7 @@ func (gs *GameState) resolveTankFire(dir Vector, tank *Tank) {
 	}
 
 	cur := tank.p
-	for range gs.cfg.fireRange {
+	for i := 0; i < gs.cfg.fireRange; i++ {
 		cur = cur.add(dir)
 		if gs.collides(cur) {
 			break
