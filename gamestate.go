@@ -1,5 +1,7 @@
 package main
 
+import "sort"
+
 type TankActionType int
 
 const (
@@ -274,7 +276,7 @@ func (gs *GameState) resolveShrinking() {
 		return
 	}
 
-	for _, t := range gs.curEnemy {
+	for _, t := range sortedTanks(gs.curEnemy) {
 		if !t.destroyed && t.p.distance(gs.cfg.center) >= gs.radius {
 			t.destroyed = true
 			res := newTurnResultDestroyingExplosion(t.p, t.id)
@@ -285,7 +287,7 @@ func (gs *GameState) resolveShrinking() {
 		}
 	}
 
-	for _, t := range gs.curPlayer {
+	for _, t := range sortedTanks(gs.curPlayer) {
 		if !t.destroyed && t.p.distance(gs.cfg.center) >= gs.radius {
 			t.destroyed = true
 			res := newTurnResultDestroyingExplosion(t.p, t.id)
@@ -481,7 +483,7 @@ func (gs *GameState) collidesWithSite(p Vector) bool {
 func (gs *GameState) playerVisibilities(tanks1, tanks2 map[int]*Tank) []TurnResult {
 	visibilities := []TurnResult{}
 
-	for _, et := range tanks2 {
+	for _, et := range sortedTanks(tanks2) {
 		if et.seen {
 			continue
 		}
@@ -583,4 +585,15 @@ func (gs *GameState) isTraversable(p Vector) bool {
 	}
 
 	return true
+}
+
+// sortedTanks returns the tanks ordered by id so that results are produced in
+// a deterministic order (Go randomizes map iteration).
+func sortedTanks(m map[int]*Tank) []*Tank {
+	tanks := make([]*Tank, 0, len(m))
+	for _, t := range m {
+		tanks = append(tanks, t)
+	}
+	sort.Slice(tanks, func(i, j int) bool { return tanks[i].id < tanks[j].id })
+	return tanks
 }
