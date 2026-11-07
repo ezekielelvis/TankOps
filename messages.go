@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type ServerMessageType int
 
 const (
@@ -79,4 +81,52 @@ type ClientMessage struct {
 	Type     ClientMessageType `json:"type"`
 	Actions  []TankAction      `json:"Actions"`
 	RoomCode string            `json:"roomCode"`
+	// VsBot starts a private game against the computer instead of joining
+	// the room named by RoomCode. Difficulty is a BotLevel (1 easy .. 3 hard).
+	VsBot      bool `json:"vsBot"`
+	Difficulty int  `json:"difficulty"`
+}
+
+const (
+	maxRoomCodeLen = 8
+	maxActions     = 8
+	maxPathLen     = 16
+)
+
+// validate rejects malformed client messages before they reach the game.
+func (m ClientMessage) validate() error {
+	switch m.Type {
+	case ClientJoinRoom:
+		if m.VsBot {
+			if BotLevel(m.Difficulty) < BotEasy || BotLevel(m.Difficulty) > BotHard {
+				return fmt.Errorf("invalid difficulty %d", m.Difficulty)
+			}
+			return nil
+		}
+		if len(m.RoomCode) == 0 || len(m.RoomCode) > maxRoomCodeLen {
+			return fmt.Errorf("room code must be 1-%d characters", maxRoomCodeLen)
+		}
+		for _, c := range m.RoomCode {
+			ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+			if !ok {
+				return fmt.Errorf("room code must be alphanumeric")
+			}
+		}
+	case ClientSendTurn:
+		if len(m.Actions) > maxActions {
+			return fmt.Errorf("too many actions: %d", len(m.Actions))
+		}
+		for _, a := range m.Actions {
+			if len(a.Path) > maxPathLen {
+				return fmt.Errorf("path too long: %d", len(a.Path))
+			}
+			if a.Type != TankMove && a.Type != TankFire {
+				return fmt.Errorf("unknown action type %d", a.Type)
+			}
+		}
+	case ClientQuitRoom:
+	default:
+		return fmt.Errorf("unknown message type %d", m.Type)
+	}
+	return nil
 }

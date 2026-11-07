@@ -3,9 +3,8 @@ package main
 import "testing"
 
 var (
-	east      = Vector{1, 0}
-	west      = Vector{-1, 0}
-	southEast = Vector{0, 1}
+	east = Vector{1, 0}
+	west = Vector{-1, 0}
 )
 
 // testConfig builds a hex arena of the given radius around (0,0).
@@ -113,7 +112,6 @@ func TestFireHitsTank(t *testing.T) {
 		[]TankConfig{{2, Vector{0, 0}}},
 	)
 	gs := NewGameState(cfg)
-	// P2 acts first on the first turn, so give P2 no actions.
 	r1, r2 := gs.ResolveActions([]TankAction{fire(1, east)}, nil)
 	if !gs.tanksP2[2].destroyed {
 		t.Fatal("enemy tank should be destroyed")
@@ -233,19 +231,20 @@ func TestSimultaneousFireOrder(t *testing.T) {
 	p1 := []TankAction{fire(1, east)}
 	p2 := []TankAction{fire(2, west)}
 
+	// With p1First the first player resolves first and kills the other
+	// before it can shoot.
 	gs := newGame()
-	// turnP1 starts false: P2 resolves first and kills P1 before it can shoot.
 	gs.ResolveActions(p1, p2)
-	if !gs.tanksP1[1].destroyed || gs.tanksP2[2].destroyed {
-		t.Fatal("turn 1: P2 should win the duel")
+	if gs.tanksP1[1].destroyed || !gs.tanksP2[2].destroyed {
+		t.Fatal("turn 1: P1 should win the duel")
 	}
 
 	// The next turn the order flips.
 	gs = newGame()
 	gs.ResolveActions(nil, nil)
 	gs.ResolveActions(p1, p2)
-	if gs.tanksP1[1].destroyed || !gs.tanksP2[2].destroyed {
-		t.Fatal("turn 2: P1 should win the duel")
+	if !gs.tanksP1[1].destroyed || gs.tanksP2[2].destroyed {
+		t.Fatal("turn 2: P2 should win the duel")
 	}
 }
 
@@ -333,4 +332,60 @@ func TestBasicConfigGameTerminates(t *testing.T) {
 		}
 	}
 	t.Fatal("shrinking arena should end an idle game")
+}
+
+func TestMapsAreWellFormed(t *testing.T) {
+	for _, m := range Maps {
+		t.Run(m.Name, func(t *testing.T) {
+			cfg := m.Build(true)
+			hexes := map[Vector]bool{}
+			for _, h := range cfg.hexes {
+				hexes[h.P] = true
+			}
+			sites := map[Vector]bool{}
+			for _, s := range cfg.sites {
+				if !hexes[s.P] {
+					t.Errorf("site %v is off the map", s.P)
+				}
+				sites[s.P] = true
+			}
+			// the original outpost map is deliberately lopsided; all others
+			// must be point-symmetric so neither side is favoured
+			symmetric := m.Name != "outpost"
+			if symmetric {
+				for p := range sites {
+					if !sites[negate(p)] {
+						t.Errorf("site %v has no mirror image", p)
+					}
+				}
+			}
+			if len(cfg.tanksP1) != len(cfg.tanksP2) || len(cfg.tanksP1) == 0 {
+				t.Fatal("players need the same, non-zero number of tanks")
+			}
+			ids := map[int]bool{}
+			for i := range cfg.tanksP1 {
+				a, b := cfg.tanksP1[i], cfg.tanksP2[i]
+				for _, tk := range []TankConfig{a, b} {
+					if ids[tk.Id] {
+						t.Errorf("duplicate tank id %d", tk.Id)
+					}
+					ids[tk.Id] = true
+					if !hexes[tk.P] || sites[tk.P] {
+						t.Errorf("tank %d starts on %v which is not open ground", tk.Id, tk.P)
+					}
+				}
+				if symmetric && b.P != negate(a.P) {
+					t.Errorf("tank %d is not mirrored by tank %d", a.Id, b.Id)
+				}
+			}
+			gs := NewGameState(cfg)
+			for i := 0; i < 100; i++ {
+				gs.ResolveActions(nil, nil)
+				if _, _, done := gs.Result(); done {
+					return
+				}
+			}
+			t.Fatal("idle game never ends")
+		})
+	}
 }

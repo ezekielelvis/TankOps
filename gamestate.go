@@ -196,6 +196,7 @@ func NewGameState(cfg GameConfig) *GameState {
 		tanksP2: tanksP2,
 		hexes:   hexes,
 		turn:    1,
+		turnP1:  cfg.p1First,
 		radius:  cfg.radius,
 	}
 }

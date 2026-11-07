@@ -15,6 +15,9 @@ export enum GameEventType {
   ButtonZoomIn,
   ButtonZoomOut,
   ButtonJoinRoom,
+  ButtonPlayEasy,
+  ButtonPlayMedium,
+  ButtonPlayHard,
   ButtonSendTurn,
   ButtonQuitGame,
   ButtonUnmute,
@@ -30,6 +33,9 @@ export type TypeOnlyEvent =
   | GameEventType.ButtonZoomIn
   | GameEventType.ButtonZoomOut
   | GameEventType.ButtonJoinRoom
+  | GameEventType.ButtonPlayEasy
+  | GameEventType.ButtonPlayMedium
+  | GameEventType.ButtonPlayHard
   | GameEventType.ButtonSendTurn
   | GameEventType.ButtonQuitGame
   | GameEventType.ButtonUnmute

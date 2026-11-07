@@ -322,6 +322,7 @@ export class UI {
 
   specialButtons: {
     joinRoom: StandardButton;
+    botButtons: StandardButton[];
     textInput: TextInput;
     sendTurn: StandardButton;
     mute: StandardButton;
@@ -475,7 +476,25 @@ export class UI {
       newArea(1, 2, 2, 1),
       newArea(1, 2, 2, 1),
     );
-    this.buttons.set(UIMode.Main, [buttonJoinRoom, buttonInputRoomCode]);
+
+    const botButtons = [
+      new StandardButton("easy bot", GameEventType.ButtonPlayEasy),
+      new StandardButton("medium bot", GameEventType.ButtonPlayMedium),
+      new StandardButton("hard bot", GameEventType.ButtonPlayHard),
+    ];
+    botButtons.forEach((button, i) => {
+      mainMenuPanel.attachButton(
+        button,
+        newArea(1, 3 + i, 2, 1),
+        newArea(1, 3 + i, 2, 1),
+      );
+      button.state = ButtonState.Inactive;
+    });
+    this.buttons.set(UIMode.Main, [
+      buttonJoinRoom,
+      buttonInputRoomCode,
+      ...botButtons,
+    ]);
 
     const buttonQuitRoom = new StandardButton(
       "quit room",
@@ -494,6 +513,7 @@ export class UI {
 
     this.specialButtons = {
       joinRoom: buttonJoinRoom,
+      botButtons: botButtons,
       textInput: buttonInputRoomCode,
       sendTurn: buttonSendTurn,
       mute: buttonMute,
@@ -609,9 +629,11 @@ export class UI {
   }
 
   public setOnlineGameAvailability(available: boolean) {
-    this.specialButtons.joinRoom.state = available
-      ? ButtonState.Normal
-      : ButtonState.Inactive;
+    const state = available ? ButtonState.Normal : ButtonState.Inactive;
+    this.specialButtons.joinRoom.state = state;
+    for (const button of this.specialButtons.botButtons) {
+      button.state = state;
+    }
   }
 
   public setSendTurnAvailability(available: boolean) {

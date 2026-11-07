@@ -5,7 +5,7 @@ import { Grid } from "./grid.js";
 import { UI, UIMode } from "./ui.js";
 import { Notifier } from "./notifier.js";
 import { GameEvent, GameEventType } from "./game-event.js";
-import { WsDriver } from "./ws-driver.js";
+import { BotDifficulty, WsDriver } from "./ws-driver.js";
 import { AudioDriver } from "./audio-driver.js";
 
 const WS_URL = "ws";
@@ -220,6 +220,15 @@ class GameStateMainMenu implements StateGame {
         this.game.freeze = true;
         this.game.setState(this.game.states.waitingForRoom);
         break;
+      case GameEventType.ButtonPlayEasy:
+        this.startBotGame(BotDifficulty.Easy);
+        break;
+      case GameEventType.ButtonPlayMedium:
+        this.startBotGame(BotDifficulty.Medium);
+        break;
+      case GameEventType.ButtonPlayHard:
+        this.startBotGame(BotDifficulty.Hard);
+        break;
       case GameEventType.AudioLoadFail:
         this.game.ui.addModal(AUDIO_FAIL_MESSAGE);
         break;
@@ -227,6 +236,12 @@ class GameStateMainMenu implements StateGame {
         this.game.ui.allowUnmute();
         break;
     }
+  }
+
+  private startBotGame(difficulty: BotDifficulty) {
+    this.game.wsDriver.sendStartBotGame(difficulty);
+    this.game.freeze = true;
+    this.game.setState(this.game.states.waitingForRoom);
   }
 }
 

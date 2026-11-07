@@ -1,4 +1,4 @@
-.PHONY: build web server run test fmt vet check clean
+.PHONY: build web server run test test-full fmt vet check clean
 
 build: web server
 
@@ -12,7 +12,11 @@ run: web
 	go run .
 
 test:
-	go test -race ./...
+	go test -race -short ./...
+
+# includes the slow bot-vs-bot strength comparison
+test-full:
+	go test ./...
 
 fmt:
 	gofmt -l -w .

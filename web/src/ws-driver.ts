@@ -43,6 +43,12 @@ type ServerMessage =
       result: GameResult;
     };
 
+export enum BotDifficulty {
+  Easy = 1,
+  Medium = 2,
+  Hard = 3,
+}
+
 enum ClientMessageType {
   JoinRoom = 1,
   SendTurn = 2,
@@ -53,6 +59,8 @@ type ClientMessage =
   | {
       type: ClientMessageType.JoinRoom;
       roomCode: string;
+      vsBot?: boolean;
+      difficulty?: BotDifficulty;
     }
   | {
       type: ClientMessageType.SendTurn;
@@ -86,6 +94,16 @@ export class WsDriver {
     const msg: ClientMessage = {
       type: ClientMessageType.JoinRoom,
       roomCode: code,
+    };
+    this.send(msg);
+  }
+
+  public sendStartBotGame(difficulty: BotDifficulty) {
+    const msg: ClientMessage = {
+      type: ClientMessageType.JoinRoom,
+      roomCode: "",
+      vsBot: true,
+      difficulty: difficulty,
     };
     this.send(msg);
   }

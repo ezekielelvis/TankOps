@@ -3,9 +3,17 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	maxMessageSize = 8 * 1024
+	pongWait       = 60 * time.Second
+	pingPeriod     = 30 * time.Second
+	writeWait      = 10 * time.Second
 )
 
 type PlayerMessageType int
@@ -62,11 +70,28 @@ func NewPlayer(conn *websocket.Conn, roomRequests chan RoomRequest) *Player {
 }
 
 func (p *Player) Run() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Error("player panicked", "panic", rec)
+			p.conn.Close()
+		}
+	}()
 	go p.readPump()
-	defer fmt.Println("player goroutine exited")
 	for {
 		select {
 		case cm, ok := <-p.clientRead:
+			if ok {
+				if err := cm.validate(); err != nil {
+					slog.Warn("ignoring invalid client message", "err", err)
+					if cm.Type == ClientJoinRoom && p.state == PlayerState(p.notInRoom) {
+						// let the client know the join failed
+						if p.Write(newRoomDisconnectedMessage()) != nil {
+							return
+						}
+					}
+					continue
+				}
+			}
 			if p.state.handleClientMessage(cm, ok) {
 				return
 			}
@@ -86,6 +111,7 @@ func (p *Player) Write(msg ServerMessage) error {
 	if p.wsClosed {
 		return errors.New("conn closed")
 	}
+	_ = p.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	err := p.conn.WriteJSON(msg)
 	if err != nil {
 		p.wsClosed = true
@@ -99,6 +125,31 @@ func (p *Player) readPump() {
 	defer func() {
 		p.conn.Close()
 		close(p.clientRead)
+	}()
+
+	p.conn.SetReadLimit(maxMessageSize)
+	_ = p.conn.SetReadDeadline(time.Now().Add(pongWait))
+	p.conn.SetPongHandler(func(string) error {
+		return p.conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
+	stopPing := make(chan struct{})
+	defer close(stopPing)
+	go func() {
+		ticker := time.NewTicker(pingPeriod)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// WriteControl is safe to call concurrently with other writes.
+				err := p.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait))
+				if err != nil {
+					return
+				}
+			case <-stopPing:
+				return
+			}
+		}
 	}()
 
 	for {
@@ -115,6 +166,9 @@ func (p *Player) readPump() {
 		if err != nil {
 			return
 		}
+		// An idle but alive client keeps the deadline fresh through pongs;
+		// any real message does too.
+		_ = p.conn.SetReadDeadline(time.Now().Add(pongWait))
 
 		p.clientRead <- clientMsg
 	}
@@ -143,24 +197,26 @@ func (ps PlayerStateNotInRoom) handleClientMessage(cm ClientMessage, ok bool) bo
 		ps.player.room = chans
 		ps.player.done = make(chan struct{})
 
-		go func(chans RoomChans) {
-			ps.player.roomRequests <- RoomRequest{
-				code:  cm.RoomCode,
-				chans: chans,
-			}
-		}(chans)
+		req := RoomRequest{code: cm.RoomCode, chans: chans}
+		if cm.VsBot {
+			req.bot = BotLevel(cm.Difficulty)
+		}
+		go func(req RoomRequest) {
+			ps.player.roomRequests <- req
+		}(req)
 
 		ps.player.setState(ps.player.waitingForRoom)
 	case ClientQuitRoom:
-		fmt.Println("illegal")
+		slog.Warn("illegal client message for current state")
 	case ClientSendTurn:
-		fmt.Println("illegal")
+		slog.Warn("illegal client message for current state")
 	}
 	return false
 }
 
 func (ps PlayerStateNotInRoom) handleRoomMessage(rm RoomMessage, ok bool) bool {
-	panic("shouldnt receive from room while in PlayerStateNotInRoom")
+	slog.Warn("room message while not in a room")
+	return false
 }
 
 type PlayerStateWaitingForRoom struct {
@@ -183,7 +239,7 @@ func (ps PlayerStateWaitingForRoom) handleClientMessage(cm ClientMessage, ok boo
 	}
 	switch cm.Type {
 	case ClientJoinRoom:
-		fmt.Println("illegal")
+		slog.Warn("illegal client message for current state")
 	case ClientQuitRoom:
 		ch := ps.player.room.send
 		done := ps.player.done
@@ -194,7 +250,7 @@ func (ps PlayerStateWaitingForRoom) handleClientMessage(cm ClientMessage, ok boo
 			}
 		}(ch, done)
 	case ClientSendTurn:
-		fmt.Println("illegal")
+		slog.Warn("illegal client message for current state")
 	}
 	return false
 }
@@ -230,11 +286,11 @@ func (ps PlayerStateWaitingForRoom) handleRoomMessage(rm RoomMessage, ok bool) b
 			return false
 		}
 	case RoomGameStarted:
-		panic("game shouldnt start before joining room")
+		slog.Warn("game started before joining room")
 	case RoomTurnResult:
-		panic("shouldnt rececive turn result before joining room")
+		slog.Warn("turn result before joining room")
 	case RoomGameFinished:
-		panic("shouldnt rececive game finished before joining room")
+		slog.Warn("game finished before joining room")
 	}
 	return false
 }
@@ -259,7 +315,7 @@ func (ps PlayerStateInRoom) handleClientMessage(cm ClientMessage, ok bool) bool 
 	}
 	switch cm.Type {
 	case ClientJoinRoom:
-		fmt.Println("illegal")
+		slog.Warn("illegal client message for current state")
 	case ClientQuitRoom:
 		ch := ps.player.room.send
 		done := ps.player.done
@@ -306,7 +362,7 @@ func (ps PlayerStateInRoom) handleRoomMessage(rm RoomMessage, ok bool) bool {
 
 	switch rm.msgType {
 	case RoomJoined:
-		panic("shouldnt receive room joined message while in room")
+		slog.Warn("room joined message while already in room")
 	case RoomGameStarted:
 		err = ps.player.Write(newStartGameMessage(rm.config))
 	case RoomTurnResult:
