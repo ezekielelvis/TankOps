@@ -149,3 +149,55 @@ func TestOversizedMessageDropsConnection(t *testing.T) {
 		t.Fatal("expected the server to close the connection")
 	}
 }
+
+func TestWebsocketResumeAfterDroppedConnection(t *testing.T) {
+	_, url := newTestServer(t)
+	c := dial(t, url)
+
+	_ = c.WriteJSON(map[string]any{"type": ClientJoinRoom, "vsBot": true, "difficulty": 1})
+	readType(t, c) // RoomJoined
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, data, err := c.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var start struct {
+		Type     ServerMessageType `json:"type"`
+		RoomCode string            `json:"roomCode"`
+		Token    string            `json:"token"`
+	}
+	if err := json.Unmarshal(data, &start); err != nil || start.Type != ServerStartGame {
+		t.Fatalf("expected StartGame, got %s (%v)", data, err)
+	}
+	if start.RoomCode == "" || start.Token == "" {
+		t.Fatalf("StartGame must carry roomCode and token: %s", data)
+	}
+
+	_ = c.WriteJSON(map[string]any{"type": ClientSendTurn, "Actions": []any{}})
+	if readType(t, c) != ServerTurnResults {
+		t.Fatal("expected turn results")
+	}
+	c.Close() // connection drops
+
+	back := dial(t, url)
+	_ = back.WriteJSON(map[string]any{"type": ClientResume, "roomCode": start.RoomCode, "token": start.Token})
+	want := []ServerMessageType{ServerRoomJoined, ServerStartGame, ServerTurnResults}
+	for i, w := range want {
+		if got := readType(t, back); got != w {
+			t.Fatalf("message %d: want type %d, got %d", i, w, got)
+		}
+	}
+}
+
+func TestWebsocketResumeUnknownRoom(t *testing.T) {
+	_, url := newTestServer(t)
+	c := dial(t, url)
+	_ = c.WriteJSON(map[string]any{"type": ClientResume, "roomCode": "bot-99", "token": "abc"})
+	if got := readType(t, c); got != ServerRoomDisconnected {
+		t.Fatalf("want RoomDisconnected, got %d", got)
+	}
+}
+
+func websocketDialRaw(url string) (*websocket.Conn, *http.Response, error) {
+	return websocket.DefaultDialer.Dial(url, nil)
+}

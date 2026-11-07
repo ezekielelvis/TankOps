@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
-	"math/rand/v2"
+	mrand "math/rand/v2"
 	"time"
 )
 
@@ -21,11 +23,15 @@ const (
 	deliverTimeout = 5 * time.Second
 	// defaultTurnTimeout is how long a room waits for both players' orders.
 	defaultTurnTimeout = 90 * time.Second
+	// defaultGrace is how long a dropped player has to reconnect.
+	defaultGrace = 30 * time.Second
 )
 
 type RoomMessage struct {
 	msgType     RoomMessageType
 	config      ClientConfig
+	roomCode    string
+	token       string
 	turnResults []TurnResult
 	gameResult  GameResult
 }
@@ -56,6 +62,39 @@ type Room struct {
 
 	turnTimeout time.Duration
 	turnTimer   *time.Timer
+
+	// reconnection support
+	grace        time.Duration
+	tokens       [2]string
+	configs      [2]ClientConfig
+	history      [2][][]TurnResult // every turn's results, per seat, for replay
+	disconnected [2]bool
+	graceGen     [2]int
+	graceExpired chan graceExpiry
+}
+
+type graceExpiry struct {
+	seat, gen int
+}
+
+func newToken() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func seatIdx(isP1 bool) int {
+	if isP1 {
+		return 0
+	}
+	return 1
+}
+
+func (r *Room) chansFor(seat int) *RoomChans {
+	if seat == 0 {
+		return &r.player1chans
+	}
+	return &r.player2chans
 }
 
 func NewRoom(code string, close chan string) *Room {
@@ -66,9 +105,11 @@ func NewRoomWithTimeout(code string, close chan string, turnTimeout time.Duratio
 	room := &Room{
 		code: code,
 		// buffered so the hub never blocks on a busy room
-		requests:    make(chan RoomRequest, 8),
-		close:       close,
-		turnTimeout: turnTimeout,
+		requests:     make(chan RoomRequest, 8),
+		close:        close,
+		turnTimeout:  turnTimeout,
+		grace:        defaultGrace,
+		graceExpired: make(chan graceExpiry, 4),
 	}
 	room.waitingForP1 = RoomStateWaitingForP1{room}
 	room.waitingForP2 = RoomStateWaitingForP2{room}
@@ -99,6 +140,8 @@ func (r *Room) Run() {
 			r.state.handlePlayerMessage(msg, false)
 		case <-r.turnTimerC():
 			r.running.handleTurnTimeout()
+		case ge := <-r.graceExpired:
+			r.running.handleGraceExpired(ge)
 		}
 	}
 }
@@ -149,6 +192,10 @@ func (r *Room) deliver(c RoomChans, msg RoomMessage) bool {
 	}
 }
 
+func (r *Room) startMessage(seat int) RoomMessage {
+	return RoomMessage{msgType: RoomGameStarted, config: r.configs[seat], roomCode: r.code, token: r.tokens[seat]}
+}
+
 func (r *Room) turnTimerC() <-chan time.Time {
 	if r.turnTimer == nil {
 		return nil
@@ -181,6 +228,12 @@ func (r *Room) QueueActions(actions []TankAction, p1 bool) bool {
 	return r.queuedP1.queued && r.queuedP2.queued
 }
 
+// ready reports whether the turn can resolve. The game pauses while a player
+// is disconnected, so they can come back to the same turn.
+func (r *Room) ready() bool {
+	return r.queuedP1.queued && r.queuedP2.queued && !r.disconnected[0] && !r.disconnected[1]
+}
+
 func (r *Room) ClearActions() {
 	r.queuedP1.queued = false
 	r.queuedP1.actions = []TankAction{}
@@ -199,6 +252,8 @@ func (r *Room) resolveTurn() {
 	r.ClearActions()
 
 	results1, results2 := r.gamestate.ResolveActions(p1, p2)
+	r.history[0] = append(r.history[0], results1)
+	r.history[1] = append(r.history[1], results2)
 	r.deliver(r.player1chans, RoomMessage{msgType: RoomTurnResult, turnResults: results1})
 	r.deliver(r.player2chans, RoomMessage{msgType: RoomTurnResult, turnResults: results2})
 
@@ -257,12 +312,15 @@ func (s RoomStateWaitingForP2) handleJoinRequest(req RoomRequest, ok bool) bool 
 	s.r.deliver(s.r.player2chans, RoomMessage{msgType: RoomJoined})
 
 	// Randomise who resolves first so neither side has a standing advantage.
-	p1First := rand.IntN(2) == 0
+	p1First := mrand.IntN(2) == 0
 	s.r.gamestate = NewGameState(NewRandomConfig(p1First))
 	cfg1, cfg2 := s.r.gamestate.ClientConfigs()
+	s.r.configs = [2]ClientConfig{cfg1, cfg2}
+	s.r.tokens = [2]string{newToken(), newToken()}
+	metrics.gamesStarted.Add(1)
 
-	s.r.deliver(s.r.player1chans, RoomMessage{msgType: RoomGameStarted, config: cfg1})
-	s.r.deliver(s.r.player2chans, RoomMessage{msgType: RoomGameStarted, config: cfg2})
+	s.r.deliver(s.r.player1chans, s.r.startMessage(0))
+	s.r.deliver(s.r.player2chans, s.r.startMessage(1))
 
 	s.r.setState(s.r.running)
 	s.r.resetTurnTimer()
@@ -275,7 +333,7 @@ func (s RoomStateWaitingForP2) handlePlayerMessage(msg PlayerMessage, isP1 bool)
 		return
 	}
 	switch msg.msgType {
-	case PlayerQuitRoom:
+	case PlayerQuitRoom, PlayerDisconnected:
 		s.r.closePlayer(&s.r.player1chans)
 		s.r.signalClose()
 	case PlayerSendTurn:
@@ -291,8 +349,40 @@ func (s RoomStateRunning) handleJoinRequest(req RoomRequest, ok bool) bool {
 	if !ok {
 		return true
 	}
-	// room is full
-	close(req.chans.read)
+	if req.resumeToken == "" {
+		// room is full
+		close(req.chans.read)
+		return false
+	}
+	seat := -1
+	for i, tok := range s.r.tokens {
+		if tok != "" && tok == req.resumeToken {
+			seat = i
+		}
+	}
+	if seat < 0 {
+		close(req.chans.read)
+		return false
+	}
+	r := s.r
+	c := r.chansFor(seat)
+	if c.read != nil {
+		r.closePlayer(c) // replace a connection the server has not noticed dying yet
+	}
+	*c = req.chans
+	r.disconnected[seat] = false
+	r.graceGen[seat]++ // cancels any pending forfeit
+	slog.Info("player resumed", "room", r.code, "seat", seat)
+	metrics.resumes.Add(1)
+	if !r.disconnected[0] && !r.disconnected[1] {
+		r.resetTurnTimer() // the game was paused
+	}
+
+	r.deliver(*c, RoomMessage{msgType: RoomJoined})
+	r.deliver(*c, r.startMessage(seat))
+	for _, results := range r.history[seat] {
+		r.deliver(*c, RoomMessage{msgType: RoomTurnResult, turnResults: results})
+	}
 	return false
 }
 
@@ -306,18 +396,62 @@ func (s RoomStateRunning) handlePlayerMessage(msg PlayerMessage, isP1 bool) {
 			res2 = Lose
 		}
 		s.r.finish(res1, res2)
+	case PlayerDisconnected:
+		s.handleDisconnect(seatIdx(isP1))
 	case PlayerSendTurn:
-		if s.r.QueueActions(msg.tankActions, isP1) {
+		s.r.QueueActions(msg.tankActions, isP1)
+		if s.r.ready() {
 			s.r.resolveTurn()
 		}
 	}
+}
+
+// handleDisconnect pauses the game and keeps the seat open for a grace
+// period so the player can resume.
+func (s RoomStateRunning) handleDisconnect(seat int) {
+	r := s.r
+	r.closePlayer(r.chansFor(seat))
+	r.disconnected[seat] = true
+	r.graceGen[seat]++
+	gen := r.graceGen[seat]
+	r.stopTurnTimer()
+	slog.Info("player disconnected, holding seat", "room", r.code, "seat", seat, "grace", r.grace)
+	ch := r.graceExpired
+	time.AfterFunc(r.grace, func() {
+		select {
+		case ch <- graceExpiry{seat, gen}:
+		default:
+		}
+	})
+	if r.ready() {
+		r.resolveTurn()
+	}
+}
+
+func (s RoomStateRunning) handleGraceExpired(ge graceExpiry) {
+	r := s.r
+	if r.state != RoomState(r.running) || !r.disconnected[ge.seat] || r.graceGen[ge.seat] != ge.gen {
+		return // resumed in time, or the game is over
+	}
+	slog.Info("grace period over, player forfeits", "room", r.code, "seat", ge.seat)
+	if r.disconnected[1-ge.seat] {
+		r.abort() // nobody is left to tell
+		return
+	}
+	res1, res2 := Win, Win
+	if ge.seat == 0 {
+		res1 = Lose
+	} else {
+		res2 = Lose
+	}
+	r.finish(res1, res2)
 }
 
 // handleTurnTimeout resolves the turn with whatever has been submitted; a
 // player who has not submitted anything simply does nothing this turn.
 func (s RoomStateRunning) handleTurnTimeout() {
 	s.r.turnTimer = nil
-	if s.r.state != RoomState(s.r.running) {
+	if s.r.state != RoomState(s.r.running) || s.r.disconnected[0] || s.r.disconnected[1] {
 		return
 	}
 	slog.Info("turn timed out", "room", s.r.code)

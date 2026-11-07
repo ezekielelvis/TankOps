@@ -125,3 +125,126 @@ func TestQuitDuringGameAwardsWinToOpponent(t *testing.T) {
 		t.Fatal("room did not ask to be closed")
 	}
 }
+
+// startTwoPlayerGame seats two fake players and returns their start messages.
+func startTwoPlayerGame(t *testing.T, room *Room) (p1, p2 RoomChans, start1, start2 RoomMessage) {
+	t.Helper()
+	p1, p2 = newChans(), newChans()
+	room.requests <- RoomRequest{code: room.code, chans: p1}
+	recv(t, p1)
+	room.requests <- RoomRequest{code: room.code, chans: p2}
+	recv(t, p2)
+	return p1, p2, recv(t, p1), recv(t, p2)
+}
+
+func TestPlayerCanResumeAfterDisconnect(t *testing.T) {
+	closeCh := make(chan string, 1)
+	room := NewRoomWithTimeout("R", closeCh, 0)
+	go room.Run()
+	p1, p2, start1, _ := startTwoPlayerGame(t, room)
+	if start1.token == "" || start1.roomCode != "R" {
+		t.Fatalf("start message must carry a token and the room code: %+v", start1)
+	}
+
+	p1.send <- PlayerMessage{msgType: PlayerDisconnected}
+	// the room hangs up on the old connection
+	select {
+	case _, ok := <-p1.read:
+		if ok {
+			t.Fatal("expected the old connection to be closed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("old connection was not closed")
+	}
+
+	// the game is paused while the player is away
+	p2.send <- PlayerMessage{msgType: PlayerSendTurn}
+	if m, got := recvMaybe(p2); got {
+		t.Fatalf("turn must not resolve while a player is disconnected, got %+v", m)
+	}
+
+	back := newChans()
+	room.requests <- RoomRequest{code: "R", chans: back, resumeToken: start1.token}
+	if m := recv(t, back); m.msgType != RoomJoined {
+		t.Fatalf("want RoomJoined, got %v", m.msgType)
+	}
+	if m := recv(t, back); m.msgType != RoomGameStarted || m.token != start1.token {
+		t.Fatalf("want the same game start again, got %+v", m)
+	}
+
+	// the resumed player sends their orders and the paused turn resolves
+	back.send <- PlayerMessage{msgType: PlayerSendTurn}
+	if m := recv(t, back); m.msgType != RoomTurnResult {
+		t.Fatalf("resumed player should get results, got %v", m.msgType)
+	}
+	if m := recv(t, p2); m.msgType != RoomTurnResult {
+		t.Fatalf("the other player should get results too, got %v", m.msgType)
+	}
+
+	// a rejoin later replays the finished turn
+	again := newChans()
+	room.requests <- RoomRequest{code: "R", chans: again, resumeToken: start1.token}
+	recv(t, again) // RoomJoined
+	recv(t, again) // game start
+	if m := recv(t, again); m.msgType != RoomTurnResult {
+		t.Fatalf("want the turn history replayed, got %v", m.msgType)
+	}
+}
+
+func TestForfeitAfterGracePeriod(t *testing.T) {
+	closeCh := make(chan string, 1)
+	room := NewRoomWithTimeout("G", closeCh, 0)
+	room.grace = 50 * time.Millisecond
+	go room.Run()
+	p1, p2, _, _ := startTwoPlayerGame(t, room)
+
+	p1.send <- PlayerMessage{msgType: PlayerDisconnected}
+	if m := recv(t, p2); m.msgType != RoomGameFinished || m.gameResult != Win {
+		t.Fatalf("remaining player should win after the grace period, got %+v", m)
+	}
+	select {
+	case <-closeCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("room should close")
+	}
+}
+
+func TestResumeWithWrongTokenIsRefused(t *testing.T) {
+	closeCh := make(chan string, 1)
+	room := NewRoomWithTimeout("W", closeCh, 0)
+	go room.Run()
+	startTwoPlayerGame(t, room)
+
+	imposter := newChans()
+	room.requests <- RoomRequest{code: "W", chans: imposter, resumeToken: "nope"}
+	select {
+	case _, ok := <-imposter.read:
+		if ok {
+			t.Fatal("imposter should not receive anything")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("imposter was not refused")
+	}
+}
+
+func TestResumeReplacesStaleConnection(t *testing.T) {
+	closeCh := make(chan string, 1)
+	room := NewRoomWithTimeout("S", closeCh, 0)
+	go room.Run()
+	p1, _, start1, _ := startTwoPlayerGame(t, room)
+
+	// the server never noticed the old connection die (a page refresh)
+	fresh := newChans()
+	room.requests <- RoomRequest{code: "S", chans: fresh, resumeToken: start1.token}
+	if m := recv(t, fresh); m.msgType != RoomJoined {
+		t.Fatalf("want RoomJoined, got %v", m.msgType)
+	}
+	select {
+	case _, ok := <-p1.read:
+		if ok {
+			t.Fatal("stale connection should have been closed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stale connection was not closed")
+	}
+}

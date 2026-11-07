@@ -1,0 +1,6 @@
+.git
+tank-ops
+*.md
+docs
+tools
+web/dist/*.js

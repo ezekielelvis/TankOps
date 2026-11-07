@@ -5,6 +5,7 @@ import (
 	"net/http"
 	_ "net/http/pprof" // registers on http.DefaultServeMux, served only when PPROF_ADDR is set
 	"os"
+	"strconv"
 )
 
 func envOr(key, fallback string) string {
@@ -14,11 +15,30 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func envInt(key string, fallback int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+		return v
+	}
+	return fallback
+}
+
+func envFloat(key string, fallback float64) float64 {
+	if v, err := strconv.ParseFloat(os.Getenv(key), 64); err == nil && v > 0 {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	addr := envOr("ADDR", "localhost:8000")
 	staticDir := envOr("STATIC_DIR", "web/dist")
 
-	hub := NewHub()
+	hub := NewHub().WithLimits(
+		envFloat("CONNECT_RATE", 2), // new connections per second per IP
+		envInt("CONNECT_BURST", 10),
+		envInt("MAX_CONNS_PER_IP", 20),
+		os.Getenv("TRUST_PROXY") == "1",
+	)
 	go hub.Run()
 
 	// pprof is opt-in and bound to its own (normally loopback) address.
@@ -38,6 +58,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	mux.Handle("/metrics", metrics)
 
 	slog.Info("tank-ops listening", "addr", addr, "static", staticDir)
 	if err := http.ListenAndServe(addr, mux); err != nil {

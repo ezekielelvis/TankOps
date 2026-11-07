@@ -19,6 +19,9 @@ type ServerMessage interface {
 type StartGameMessage struct {
 	Type   ServerMessageType `json:"type"`
 	Config ClientConfig      `json:"config"`
+	// RoomCode and Token let a client that lost its connection resume.
+	RoomCode string `json:"roomCode"`
+	Token    string `json:"token"`
 }
 
 func (m StartGameMessage) isServerMessage() {}
@@ -49,8 +52,8 @@ type GameFinishedMessage struct {
 
 func (m GameFinishedMessage) isServerMessage() {}
 
-func newStartGameMessage(config ClientConfig) StartGameMessage {
-	return StartGameMessage{ServerStartGame, config}
+func newStartGameMessage(config ClientConfig, roomCode, token string) StartGameMessage {
+	return StartGameMessage{ServerStartGame, config, roomCode, token}
 }
 
 func newTurnResultsMessage(results []TurnResult) TurnResultsMessage {
@@ -75,6 +78,8 @@ const (
 	ClientJoinRoom ClientMessageType = 1
 	ClientSendTurn ClientMessageType = 2
 	ClientQuitRoom ClientMessageType = 3
+	// ClientResume rejoins a running game after a dropped connection.
+	ClientResume ClientMessageType = 4
 )
 
 type ClientMessage struct {
@@ -85,10 +90,12 @@ type ClientMessage struct {
 	// the room named by RoomCode. Difficulty is a BotLevel (1 easy .. 3 hard).
 	VsBot      bool `json:"vsBot"`
 	Difficulty int  `json:"difficulty"`
+	// Token proves which seat a ClientResume wants back.
+	Token string `json:"token"`
 }
 
 const (
-	maxRoomCodeLen = 8
+	maxRoomCodeLen = 8 // bot games use longer generated codes, which only the server creates
 	maxActions     = 8
 	maxPathLen     = 16
 )
@@ -125,6 +132,10 @@ func (m ClientMessage) validate() error {
 			}
 		}
 	case ClientQuitRoom:
+	case ClientResume:
+		if len(m.RoomCode) == 0 || len(m.RoomCode) > 16 || len(m.Token) == 0 || len(m.Token) > 64 {
+			return fmt.Errorf("invalid resume request")
+		}
 	default:
 		return fmt.Errorf("unknown message type %d", m.Type)
 	}

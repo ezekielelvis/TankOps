@@ -82,3 +82,18 @@ The full roadmap is in [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md).
 ## License
 
 [MIT](LICENSE). This covers the code and the generated art and sound.
+
+## Deploying
+
+```
+docker build -t tank-ops .
+docker run -p 8000:8000 tank-ops
+```
+
+Put a TLS-terminating reverse proxy in front for public use, and set
+`TRUST_PROXY=1` so rate limits see real client addresses. Other settings:
+`CONNECT_RATE` (new connections per second per IP, default 2),
+`CONNECT_BURST` (10), `MAX_CONNS_PER_IP` (20). `/healthz` is a liveness check
+and `/metrics` exposes Prometheus counters (rooms, games, resumes, refusals).
+Don't expose `/metrics` publicly if you don't want the numbers public; block it
+in the proxy.

@@ -21,6 +21,9 @@ type PlayerMessageType int
 const (
 	PlayerSendTurn PlayerMessageType = 1
 	PlayerQuitRoom PlayerMessageType = 2
+	// PlayerDisconnected means the connection dropped (not a deliberate quit),
+	// so a running game may keep the seat open for a while.
+	PlayerDisconnected PlayerMessageType = 3
 )
 
 type RoomChans struct {
@@ -83,7 +86,7 @@ func (p *Player) Run() {
 			if ok {
 				if err := cm.validate(); err != nil {
 					slog.Warn("ignoring invalid client message", "err", err)
-					if cm.Type == ClientJoinRoom && p.state == PlayerState(p.notInRoom) {
+					if (cm.Type == ClientJoinRoom || cm.Type == ClientResume) && p.state == PlayerState(p.notInRoom) {
 						// let the client know the join failed
 						if p.Write(newRoomDisconnectedMessage()) != nil {
 							return
@@ -189,7 +192,7 @@ func (ps PlayerStateNotInRoom) handleClientMessage(cm ClientMessage, ok bool) bo
 		return true
 	}
 	switch cm.Type {
-	case ClientJoinRoom:
+	case ClientJoinRoom, ClientResume:
 		chans := RoomChans{
 			read: make(chan RoomMessage),
 			send: make(chan PlayerMessage),
@@ -198,6 +201,9 @@ func (ps PlayerStateNotInRoom) handleClientMessage(cm ClientMessage, ok bool) bo
 		ps.player.done = make(chan struct{})
 
 		req := RoomRequest{code: cm.RoomCode, chans: chans}
+		if cm.Type == ClientResume {
+			req.resumeToken = cm.Token
+		}
 		if cm.VsBot {
 			req.bot = BotLevel(cm.Difficulty)
 		}
@@ -230,7 +236,7 @@ func (ps PlayerStateWaitingForRoom) handleClientMessage(cm ClientMessage, ok boo
 		done := ps.player.done
 		go func(ch chan PlayerMessage, done chan struct{}) {
 			select {
-			case ch <- PlayerMessage{msgType: PlayerQuitRoom}:
+			case ch <- PlayerMessage{msgType: PlayerDisconnected}:
 			case <-done:
 			}
 		}(ch, done)
@@ -278,7 +284,7 @@ func (ps PlayerStateWaitingForRoom) handleRoomMessage(rm RoomMessage, ok bool) b
 			done := ps.player.done
 			go func(ch chan PlayerMessage, done chan struct{}) {
 				select {
-				case ch <- PlayerMessage{msgType: PlayerQuitRoom}:
+				case ch <- PlayerMessage{msgType: PlayerDisconnected}:
 				case <-done:
 				}
 			}(ch, done)
@@ -306,7 +312,7 @@ func (ps PlayerStateInRoom) handleClientMessage(cm ClientMessage, ok bool) bool 
 		done := ps.player.done
 		go func(ch chan PlayerMessage, done chan struct{}) {
 			select {
-			case ch <- PlayerMessage{msgType: PlayerQuitRoom}:
+			case ch <- PlayerMessage{msgType: PlayerDisconnected}:
 			case <-done:
 			}
 		}(ch, done)
@@ -364,7 +370,7 @@ func (ps PlayerStateInRoom) handleRoomMessage(rm RoomMessage, ok bool) bool {
 	case RoomJoined:
 		slog.Warn("room joined message while already in room")
 	case RoomGameStarted:
-		err = ps.player.Write(newStartGameMessage(rm.config))
+		err = ps.player.Write(newStartGameMessage(rm.config, rm.roomCode, rm.token))
 	case RoomTurnResult:
 		err = ps.player.Write(newTurnResultsMessage(rm.turnResults))
 	case RoomGameFinished:
@@ -376,7 +382,7 @@ func (ps PlayerStateInRoom) handleRoomMessage(rm RoomMessage, ok bool) bool {
 		done := ps.player.done
 		go func(ch chan PlayerMessage, done chan struct{}) {
 			select {
-			case ch <- PlayerMessage{msgType: PlayerQuitRoom}:
+			case ch <- PlayerMessage{msgType: PlayerDisconnected}:
 			case <-done:
 			}
 		}(ch, done)
