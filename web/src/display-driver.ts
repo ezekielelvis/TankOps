@@ -89,10 +89,16 @@ export class DisplayDriver {
     this.ui.resize(canvasSize);
   }
 
-  public reset() {
+  // Resets zoom and centres the camera on the given grid position.
+  public reset(center: Vector = Vector.zero()) {
     this.presetIdx = DEFAULT_PRESET_IDX;
     this.curPreset = this.spriteConfigs[this.presetIdx];
     this.cameraOffset = Vector.zero();
+    const screenCenter = new Vector(
+      this.ctx.canvas.width,
+      this.ctx.canvas.height,
+    ).mul(0.5);
+    this.cameraOffset = screenCenter.sub(this.gridToScreenCoords(center));
   }
 
   public handleZoomIn() {

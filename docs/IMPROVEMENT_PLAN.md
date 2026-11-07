@@ -147,10 +147,22 @@ Decisions made: this is a hobby project, so keep the AI simple, server-side and 
 Phases 3 and 6 matter less for a hobby project. Reconnect is useful but not essential once there is an AI opponent, and Phase 6 is optional.
 
 ## Status
-- Done: `tank-ops` binary removed from git and added to `.gitignore`. `.DS_Store` untracked as well. Not yet committed.
-- The binary still exists in earlier git history (about 8 MB). History was not rewritten. See the open questions.
+
+Done (see the git log):
+- Phase 0: binary removed (and purged from history), Makefile, env config, pprof opt-in, `/healthz`, structured logs, README.
+- Phase 1: game-logic, bot, room and websocket tests; deterministic iteration; CI workflow.
+- Phase 2: no panics on bad state, `recover` in goroutines, turn timer, non-blocking hub, websocket limits and ping/pong, input validation. Note: gorilla's default `CheckOrigin` already enforces same-origin, so no change was needed there.
+- Phase 4 (partly): `p1First` is honoured and randomised per game; two new symmetric maps (`duel`, `crossroads`); camera centres on the arena.
+- Phase 7: AI opponent at three levels, with menu buttons.
+- Phase 8: MIT license, original generated sprites and sounds (`tools/gen_assets`), community files, protocol docs.
+
+Not done yet: Phase 3 (reconnect, rematch), most of Phase 5 (keyboard, mute persistence, mobile pinch, tutorial), Phase 6 (Docker, metrics, rate limits), and more maps or mechanics.
+
+Findings along the way:
+- The original `outpost` map starts tanks adjacent and the first turn is a coin flip on who resolves first. The new maps start apart.
+- A shot that kills a tank more than 2 hexes from the shooter's own tanks is not reported to the shooter as a kill (they only see the Fire event). This looks unintended but is left as is.
+- Resolution order is hidden, so the hard bot infers it from event order.
 
 ## Open questions
-- Which license for the code, and who made the sprites and sounds (Phase 8)?
-- History: leave the old binary in history (simplest, costs 8 MB on clone), or rewrite history before the first public push? A rewrite is cheap now, since the repo has two commits and no other contributors, and it gets harder after people fork.
-- AI difficulty: are three levels enough, or do you want only one good bot first?
+- Should a kill outside the shooter's sight be reported to the shooter?
+- Reconnect (Phase 3) matters less now there is a bot; do it only if the game gets played online.

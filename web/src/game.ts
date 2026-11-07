@@ -128,7 +128,7 @@ export class Game {
       this.audioDriver,
     );
     this.displayDriver.gameState = gameState;
-    this.displayDriver.reset();
+    this.displayDriver.reset(config.center);
   }
 
   public removeGrid() {

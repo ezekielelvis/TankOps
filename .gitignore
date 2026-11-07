@@ -1,3 +1,4 @@
 *.js
 /tank-ops
 .DS_Store
+__pycache__/

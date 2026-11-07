@@ -1,7 +1,7 @@
 import { GameEventType } from "./game-event.js";
 import { Notifier } from "./notifier.js";
 
-const AUDIO_PATH = "/assets/sounds.mp3";
+const AUDIO_PATH = "/assets/sounds.wav";
 const AudioCtx =
   window.AudioContext || ((window as any).webkitAudioContext as AudioContext);
 
