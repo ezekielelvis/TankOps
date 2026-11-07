@@ -1,144 +1,6 @@
-package main
+package game
 
 import "sort"
-
-type TankActionType int
-
-const (
-	TankMove TankActionType = 1
-	TankFire TankActionType = 2
-)
-
-type TankAction struct {
-	Type TankActionType `json:"type"`
-	Id   int            `json:"id"`
-	Dir  Vector         `json:"dir"`
-	Path []Vector       `json:"path"`
-}
-
-type Tank struct {
-	id        int
-	p         Vector
-	exercised bool
-	visible   bool
-	destroyed bool
-	seen      bool
-}
-
-type Hex struct {
-	p           Vector
-	traversable bool
-}
-
-type GameResult int
-
-const (
-	Win  GameResult = 1
-	Draw GameResult = 2
-	Lose GameResult = 3
-)
-
-type TurnResult interface {
-	isTurnResult()
-}
-
-type TurnResultType int
-
-const (
-	Move2     TurnResultType = 1
-	Move3     TurnResultType = 2
-	Fire      TurnResultType = 3
-	Explosion TurnResultType = 4
-	Destroyed TurnResultType = 5
-	Visible   TurnResultType = 6
-	Shrink    TurnResultType = 7
-)
-
-type TurnResultMove2 struct {
-	Type  TurnResultType `json:"type"`
-	Id    int            `json:"id"`
-	P1    Vector         `json:"p1"`
-	P2    Vector         `json:"p2"`
-	Start bool           `json:"start"`
-}
-
-func (tr TurnResultMove2) isTurnResult() {}
-func newTurnResultMove2(id int, p1, p2 Vector, start bool) TurnResultMove2 {
-	return TurnResultMove2{Type: Move2, Id: id, P1: p1, P2: p2, Start: start}
-}
-
-type TurnResultMove3 struct {
-	Type TurnResultType `json:"type"`
-	Id   int            `json:"id"`
-	P1   Vector         `json:"p1"`
-	P2   Vector         `json:"p2"`
-	P3   Vector         `json:"p3"`
-}
-
-func (tr TurnResultMove3) isTurnResult() {}
-func newTurnResultMove3(id int, p1, p2, p3 Vector) TurnResultMove3 {
-	return TurnResultMove3{Type: Move3, Id: id, P1: p1, P2: p2, P3: p3}
-}
-
-type TurnResultFire struct {
-	Type TurnResultType `json:"type"`
-	Id   int            `json:"id"`
-	Dir  Vector         `json:"dir"`
-}
-
-func (tr TurnResultFire) isTurnResult() {}
-func newTurnResultFire(id int, dir Vector) TurnResultFire {
-	return TurnResultFire{Type: Fire, Id: id, Dir: dir}
-}
-
-type TurnResultExplosion struct {
-	Type      TurnResultType `json:"type"`
-	P         Vector         `json:"p"`
-	Destroyed bool           `json:"destroyed"`
-	Id        int            `json:"id"`
-}
-
-func (tr TurnResultExplosion) isTurnResult() {}
-func newTurnResultExplosion(p Vector) TurnResultExplosion {
-	return TurnResultExplosion{Type: Explosion, P: p, Destroyed: false}
-}
-func newTurnResultDestroyingExplosion(p Vector, id int) TurnResultExplosion {
-	return TurnResultExplosion{Type: Explosion, P: p, Destroyed: true, Id: id}
-}
-
-type TurnResultDestroyed struct {
-	Type TurnResultType `json:"type"`
-	P    Vector         `json:"p"`
-	Id   int            `json:"id"`
-}
-
-func (tr TurnResultDestroyed) isTurnResult() {}
-func newTurnResultDestroyed(p Vector, id int) TurnResultDestroyed {
-	return TurnResultDestroyed{Type: Destroyed, P: p, Id: id}
-}
-
-type TurnResultVisible struct {
-	Type    TurnResultType `json:"type"`
-	Id      int            `json:"id"`
-	P       Vector         `json:"p"`
-	Visible bool           `json:"visible"`
-}
-
-func (tr TurnResultVisible) isTurnResult() {}
-func newTurnResultVisible(id int, p Vector, visible bool) TurnResultVisible {
-	return TurnResultVisible{Type: Visible, Id: id, P: p, Visible: visible}
-}
-
-type TurnResultShrink struct {
-	Type    TurnResultType `json:"type"`
-	R       int            `json:"r"`
-	Started bool           `json:"started"`
-}
-
-func (tr TurnResultShrink) isTurnResult() {}
-func newTurnResultShrink(r int, started bool) TurnResultShrink {
-	return TurnResultShrink{Type: Shrink, R: r, Started: started}
-}
 
 type GameState struct {
 	cfg GameConfig
@@ -183,7 +45,7 @@ func NewGameState(cfg GameConfig) *GameState {
 
 	for _, t1 := range tanksP1 {
 		for _, t2 := range tanksP2 {
-			if t1.p.distance(t2.p) <= cfg.visibilityRange {
+			if t1.p.Distance(t2.p) <= cfg.visibilityRange {
 				t1.visible = true
 				t2.visible = true
 			}
@@ -270,7 +132,7 @@ func (gs *GameState) resolveShrinking() {
 	shrinksNext := gs.turn+1 >= after && (gs.turn+1-after)%interval == 0
 	if !shrinksNow {
 		if shrinksNext {
-			shrinkResult := newTurnResultShrink(gs.radius, false)
+			shrinkResult := NewTurnResultShrink(gs.radius, false)
 			gs.curResultsPlayer = append(gs.curResultsPlayer, shrinkResult)
 			gs.curResultsEnemy = append(gs.curResultsEnemy, shrinkResult)
 		}
@@ -278,9 +140,9 @@ func (gs *GameState) resolveShrinking() {
 	}
 
 	for _, t := range sortedTanks(gs.curEnemy) {
-		if !t.destroyed && t.p.distance(gs.cfg.center) >= gs.radius {
+		if !t.destroyed && t.p.Distance(gs.cfg.center) >= gs.radius {
 			t.destroyed = true
-			res := newTurnResultDestroyingExplosion(t.p, t.id)
+			res := NewTurnResultDestroyingExplosion(t.p, t.id)
 			gs.curResultsEnemy = append(gs.curResultsEnemy, res)
 			if t.visible {
 				gs.curResultsPlayer = append(gs.curResultsPlayer, res)
@@ -289,9 +151,9 @@ func (gs *GameState) resolveShrinking() {
 	}
 
 	for _, t := range sortedTanks(gs.curPlayer) {
-		if !t.destroyed && t.p.distance(gs.cfg.center) >= gs.radius {
+		if !t.destroyed && t.p.Distance(gs.cfg.center) >= gs.radius {
 			t.destroyed = true
-			res := newTurnResultDestroyingExplosion(t.p, t.id)
+			res := NewTurnResultDestroyingExplosion(t.p, t.id)
 			gs.curResultsPlayer = append(gs.curResultsPlayer, res)
 			if t.visible {
 				gs.curResultsEnemy = append(gs.curResultsEnemy, res)
@@ -300,12 +162,12 @@ func (gs *GameState) resolveShrinking() {
 	}
 
 	for _, h := range gs.hexes {
-		if h.p.distance(gs.cfg.center) >= gs.radius {
+		if h.p.Distance(gs.cfg.center) >= gs.radius {
 			delete(gs.hexes, h.p)
 		}
 	}
 
-	shrinkResult := newTurnResultShrink(gs.radius, true)
+	shrinkResult := NewTurnResultShrink(gs.radius, true)
 	gs.curResultsPlayer = append(gs.curResultsPlayer, shrinkResult)
 	gs.curResultsEnemy = append(gs.curResultsEnemy, shrinkResult)
 
@@ -314,7 +176,7 @@ func (gs *GameState) resolveShrinking() {
 	gs.radius--
 
 	if shrinksNext {
-		shrinkResult := newTurnResultShrink(gs.radius, false)
+		shrinkResult := NewTurnResultShrink(gs.radius, false)
 		gs.curResultsPlayer = append(gs.curResultsPlayer, shrinkResult)
 		gs.curResultsEnemy = append(gs.curResultsEnemy, shrinkResult)
 	}
@@ -326,7 +188,7 @@ func (gs *GameState) resolveTankMove(path []Vector, tank *Tank) {
 		return
 	}
 
-	startResult := newTurnResultMove2(
+	startResult := NewTurnResultMove2(
 		tank.id, validPath[0], validPath[1], true,
 	)
 	gs.curResultsPlayer = append(gs.curResultsPlayer, startResult)
@@ -340,7 +202,7 @@ func (gs *GameState) resolveTankMove(path []Vector, tank *Tank) {
 		tank.p = p2
 		gs.updateVisibilities()
 
-		midResult := newTurnResultMove3(
+		midResult := NewTurnResultMove3(
 			tank.id,
 			p1,
 			p2,
@@ -356,7 +218,7 @@ func (gs *GameState) resolveTankMove(path []Vector, tank *Tank) {
 	tank.p = validPath[iLast]
 	gs.updateVisibilities()
 
-	endResult := newTurnResultMove2(
+	endResult := NewTurnResultMove2(
 		tank.id, validPath[iLast-1], validPath[iLast], false,
 	)
 	gs.curResultsPlayer = append(gs.curResultsPlayer, endResult)
@@ -367,10 +229,10 @@ func (gs *GameState) resolveTankMove(path []Vector, tank *Tank) {
 }
 
 func (gs *GameState) resolveTankFire(dir Vector, tank *Tank) {
-	if !dir.isUnit() {
+	if !dir.IsUnit() {
 		return
 	}
-	res := newTurnResultFire(tank.id, dir)
+	res := NewTurnResultFire(tank.id, dir)
 	gs.curResultsPlayer = append(gs.curResultsPlayer, res)
 	if tank.visible {
 		gs.curResultsEnemy = append(gs.curResultsEnemy, res)
@@ -378,7 +240,7 @@ func (gs *GameState) resolveTankFire(dir Vector, tank *Tank) {
 
 	cur := tank.p
 	for i := 0; i < gs.cfg.fireRange; i++ {
-		cur = cur.add(dir)
+		cur = cur.Add(dir)
 		if gs.collides(cur) {
 			break
 		}
@@ -388,7 +250,7 @@ func (gs *GameState) resolveTankFire(dir Vector, tank *Tank) {
 
 	if colTank := gs.getCollidingTank(cur); colTank != nil {
 		colTank.destroyed = true
-		explosion := newTurnResultDestroyingExplosion(cur, colTank.id)
+		explosion := NewTurnResultDestroyingExplosion(cur, colTank.id)
 		if visPlayer {
 			gs.curResultsPlayer = append(gs.curResultsPlayer, explosion)
 		}
@@ -398,7 +260,7 @@ func (gs *GameState) resolveTankFire(dir Vector, tank *Tank) {
 		gs.updateVisibilities()
 		return
 	}
-	explosion := newTurnResultExplosion(cur)
+	explosion := NewTurnResultExplosion(cur)
 	if visPlayer {
 		gs.curResultsPlayer = append(gs.curResultsPlayer, explosion)
 	}
@@ -436,12 +298,12 @@ func (gs *GameState) resetExercised() {
 func (gs *GameState) visible(p Vector) (bool, bool) {
 	visPlayer, visEnemy := false, false
 	for _, t := range gs.curPlayer {
-		if !t.destroyed && t.p.distance(p) <= gs.cfg.visibilityRange {
+		if !t.destroyed && t.p.Distance(p) <= gs.cfg.visibilityRange {
 			visPlayer = true
 		}
 	}
 	for _, t := range gs.curEnemy {
-		if !t.destroyed && t.p.distance(p) <= gs.cfg.visibilityRange {
+		if !t.destroyed && t.p.Distance(p) <= gs.cfg.visibilityRange {
 			visEnemy = true
 		}
 	}
@@ -493,7 +355,7 @@ func (gs *GameState) playerVisibilities(tanks1, tanks2 map[int]*Tank) []TurnResu
 			if pt.destroyed {
 				continue
 			}
-			if et.p.distance(pt.p) <= gs.cfg.visibilityRange {
+			if et.p.Distance(pt.p) <= gs.cfg.visibilityRange {
 				isVisible = true
 				break
 			}
@@ -502,12 +364,12 @@ func (gs *GameState) playerVisibilities(tanks1, tanks2 map[int]*Tank) []TurnResu
 		if isVisible && !et.visible {
 			if et.destroyed {
 				et.seen = true
-				res := newTurnResultDestroyed(et.p, et.id)
+				res := NewTurnResultDestroyed(et.p, et.id)
 				visibilities = append(visibilities, res)
 			} else {
 				visibilities = append(
 					visibilities,
-					newTurnResultVisible(et.id, et.p, true),
+					NewTurnResultVisible(et.id, et.p, true),
 				)
 			}
 
@@ -515,7 +377,7 @@ func (gs *GameState) playerVisibilities(tanks1, tanks2 map[int]*Tank) []TurnResu
 		if !et.destroyed && !isVisible && et.visible {
 			visibilities = append(
 				visibilities,
-				newTurnResultVisible(et.id, et.p, false),
+				NewTurnResultVisible(et.id, et.p, false),
 			)
 		}
 		et.visible = isVisible
@@ -556,7 +418,7 @@ func (gs *GameState) validPath(path []Vector, tank *Tank) []Vector {
 		if containsVector(validPath, path[i]) {
 			break
 		}
-		if !path[i].sub(path[i-1]).isUnit() {
+		if !path[i].Sub(path[i-1]).IsUnit() {
 			break
 		}
 

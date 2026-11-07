@@ -1,6 +1,11 @@
-package main
+package server
 
-import "fmt"
+import (
+	"fmt"
+
+	"tank-ops/internal/bot"
+	"tank-ops/internal/game"
+)
 
 type ServerMessageType int
 
@@ -18,7 +23,7 @@ type ServerMessage interface {
 
 type StartGameMessage struct {
 	Type   ServerMessageType `json:"type"`
-	Config ClientConfig      `json:"config"`
+	Config game.ClientConfig `json:"config"`
 	// RoomCode and Token let a client that lost its connection resume.
 	RoomCode string `json:"roomCode"`
 	Token    string `json:"token"`
@@ -28,7 +33,7 @@ func (m StartGameMessage) isServerMessage() {}
 
 type TurnResultsMessage struct {
 	Type        ServerMessageType `json:"type"`
-	TurnResults []TurnResult      `json:"turnResults"`
+	TurnResults []game.TurnResult `json:"turnResults"`
 }
 
 func (m TurnResultsMessage) isServerMessage() {}
@@ -47,16 +52,16 @@ func (m RoomDisconnectedMessage) isServerMessage() {}
 
 type GameFinishedMessage struct {
 	Type   ServerMessageType `json:"type"`
-	Result GameResult        `json:"result"`
+	Result game.GameResult   `json:"result"`
 }
 
 func (m GameFinishedMessage) isServerMessage() {}
 
-func newStartGameMessage(config ClientConfig, roomCode, token string) StartGameMessage {
+func newStartGameMessage(config game.ClientConfig, roomCode, token string) StartGameMessage {
 	return StartGameMessage{ServerStartGame, config, roomCode, token}
 }
 
-func newTurnResultsMessage(results []TurnResult) TurnResultsMessage {
+func newTurnResultsMessage(results []game.TurnResult) TurnResultsMessage {
 	return TurnResultsMessage{ServerTurnResults, results}
 }
 
@@ -68,7 +73,7 @@ func newRoomDisconnectedMessage() RoomDisconnectedMessage {
 	return RoomDisconnectedMessage{ServerRoomDisconnected}
 }
 
-func newGameFinishedMessage(result GameResult) GameFinishedMessage {
+func newGameFinishedMessage(result game.GameResult) GameFinishedMessage {
 	return GameFinishedMessage{ServerGameFinished, result}
 }
 
@@ -84,10 +89,10 @@ const (
 
 type ClientMessage struct {
 	Type     ClientMessageType `json:"type"`
-	Actions  []TankAction      `json:"Actions"`
+	Actions  []game.TankAction `json:"Actions"`
 	RoomCode string            `json:"roomCode"`
 	// VsBot starts a private game against the computer instead of joining
-	// the room named by RoomCode. Difficulty is a BotLevel (1 easy .. 3 hard).
+	// the room named by RoomCode. Difficulty is a bot.Level (1 easy .. 3 hard).
 	VsBot      bool `json:"vsBot"`
 	Difficulty int  `json:"difficulty"`
 	// Token proves which seat a ClientResume wants back.
@@ -105,7 +110,7 @@ func (m ClientMessage) validate() error {
 	switch m.Type {
 	case ClientJoinRoom:
 		if m.VsBot {
-			if BotLevel(m.Difficulty) < BotEasy || BotLevel(m.Difficulty) > BotHard {
+			if bot.Level(m.Difficulty) < bot.Easy || bot.Level(m.Difficulty) > bot.Hard {
 				return fmt.Errorf("invalid difficulty %d", m.Difficulty)
 			}
 			return nil
@@ -127,7 +132,7 @@ func (m ClientMessage) validate() error {
 			if len(a.Path) > maxPathLen {
 				return fmt.Errorf("path too long: %d", len(a.Path))
 			}
-			if a.Type != TankMove && a.Type != TankFire {
+			if a.Type != game.TankMove && a.Type != game.TankFire {
 				return fmt.Errorf("unknown action type %d", a.Type)
 			}
 		}

@@ -13,8 +13,8 @@ make run
 ## Before you open a pull request
 
 - `make check` passes (vet, race-enabled tests, TypeScript type check).
-- Game rules live in `gamestate.go` and must stay free of networking. Add or update a test in `gamestate_test.go` for any rule change.
-- New maps go in `config.go`, should be point-symmetric (use `symmetricConfig`), and `TestMapsAreWellFormed` must pass.
+- Game rules live in `internal/game` and must stay free of networking. Add or update a test in `internal/game/state_test.go` for any rule change.
+- New maps go in `internal/game/maps.go`, should be point-symmetric (use `symmetricConfig`), and `TestMapsAreWellFormed` must pass.
 - Bot changes: run `make test-full`. Medium should still beat easy and hard should still beat medium.
 - Don't commit build output (`*.js` under `web/dist`, the `tank-ops` binary).
 - Art and sound come from `tools/gen_assets`. Change the script and regenerate; don't hand-edit `web/src/sprites.ts`.

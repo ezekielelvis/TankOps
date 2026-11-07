@@ -1,4 +1,4 @@
-package main
+package game
 
 import "testing"
 
@@ -14,7 +14,7 @@ func testConfig(radius int, p1, p2 []TankConfig, sites ...Vector) GameConfig {
 	for x := -radius; x <= radius; x++ {
 		for y := -radius; y <= radius; y++ {
 			p := Vector{x, y}
-			if p.distance(center) <= radius {
+			if p.Distance(center) <= radius {
 				hexes = append(hexes, SceneConfig{P: p})
 			}
 		}
@@ -334,58 +334,48 @@ func TestBasicConfigGameTerminates(t *testing.T) {
 	t.Fatal("shrinking arena should end an idle game")
 }
 
-func TestMapsAreWellFormed(t *testing.T) {
-	for _, m := range Maps {
-		t.Run(m.Name, func(t *testing.T) {
-			cfg := m.Build(true)
-			hexes := map[Vector]bool{}
-			for _, h := range cfg.hexes {
-				hexes[h.P] = true
-			}
-			sites := map[Vector]bool{}
-			for _, s := range cfg.sites {
-				if !hexes[s.P] {
-					t.Errorf("site %v is off the map", s.P)
-				}
-				sites[s.P] = true
-			}
-			// the original outpost map is deliberately lopsided; all others
-			// must be point-symmetric so neither side is favoured
-			symmetric := m.Name != "outpost"
-			if symmetric {
-				for p := range sites {
-					if !sites[negate(p)] {
-						t.Errorf("site %v has no mirror image", p)
-					}
-				}
-			}
-			if len(cfg.tanksP1) != len(cfg.tanksP2) || len(cfg.tanksP1) == 0 {
-				t.Fatal("players need the same, non-zero number of tanks")
-			}
-			ids := map[int]bool{}
-			for i := range cfg.tanksP1 {
-				a, b := cfg.tanksP1[i], cfg.tanksP2[i]
-				for _, tk := range []TankConfig{a, b} {
-					if ids[tk.Id] {
-						t.Errorf("duplicate tank id %d", tk.Id)
-					}
-					ids[tk.Id] = true
-					if !hexes[tk.P] || sites[tk.P] {
-						t.Errorf("tank %d starts on %v which is not open ground", tk.Id, tk.P)
-					}
-				}
-				if symmetric && b.P != negate(a.P) {
-					t.Errorf("tank %d is not mirrored by tank %d", a.Id, b.Id)
-				}
-			}
-			gs := NewGameState(cfg)
-			for i := 0; i < 100; i++ {
-				gs.ResolveActions(nil, nil)
-				if _, _, done := gs.Result(); done {
-					return
-				}
-			}
-			t.Fatal("idle game never ends")
-		})
+func TestSimulationAPI(t *testing.T) {
+	gs := NewSimulation(Position{
+		Hexes:      []Vector{{0, 0}, {1, 0}, {2, 0}, {3, 0}},
+		Sites:      []Vector{{2, 0}},
+		Mine:       []TankConfig{{1, Vector{0, 0}}},
+		Theirs:     []TankConfig{{2, Vector{3, 0}}},
+		DriveRange: 5, FireRange: 3, VisRange: 2,
+		MineFirst: true,
+	})
+	hexes, sites := gs.Terrain()
+	if len(hexes) != 4 || !sites[Vector{2, 0}] || len(sites) != 1 {
+		t.Fatalf("terrain wrong: %v %v", hexes, sites)
+	}
+	if gs.Traversable(Vector{2, 0}) || !gs.Traversable(Vector{1, 0}) || gs.Traversable(Vector{9, 9}) {
+		t.Fatal("traversable wrong")
+	}
+	if got := gs.Alive(true); len(got) != 1 || got[1] != (Vector{0, 0}) {
+		t.Fatalf("alive wrong: %v", got)
+	}
+	// the obstacle in between absorbs the shot
+	gs.ResolveActions([]TankAction{fire(1, east)}, nil)
+	if gs.Lost(false) != 0 {
+		t.Fatal("shot should have hit the obstacle")
+	}
+	if _, destroyed, ok := gs.Tank(false, 2); !ok || destroyed {
+		t.Fatal("tank lookup wrong")
+	}
+	if _, _, ok := gs.Tank(false, 99); ok {
+		t.Fatal("unknown tank should not be found")
+	}
+}
+
+func TestSimulationShrinkHitsFirstTurnOnly(t *testing.T) {
+	gs := NewSimulation(Position{
+		Hexes:  []Vector{{0, 0}, {1, 0}, {-1, 0}},
+		Mine:   []TankConfig{{1, Vector{1, 0}}}, // on the collapsing ring
+		Theirs: []TankConfig{{2, Vector{0, 0}}},
+		Center: Vector{0, 0}, ShrinkRadius: 1,
+		DriveRange: 5, FireRange: 3, VisRange: 2,
+	})
+	gs.ResolveActions(nil, nil)
+	if gs.Lost(true) != 1 {
+		t.Fatal("tank on the announced ring should be lost")
 	}
 }

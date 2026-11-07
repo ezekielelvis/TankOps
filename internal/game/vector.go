@@ -1,4 +1,4 @@
-package main
+package game
 
 func abs(val int) int {
 	if val < 0 {
@@ -16,16 +16,16 @@ func newZeroVector() Vector {
 	return Vector{0, 0}
 }
 
-func (v Vector) add(other Vector) Vector {
+func (v Vector) Add(other Vector) Vector {
 	return Vector{v.X + other.X, v.Y + other.Y}
 }
 
-func (v Vector) sub(other Vector) Vector {
+func (v Vector) Sub(other Vector) Vector {
 	return Vector{v.X - other.X, v.Y - other.Y}
 }
 
-func (v Vector) distance(other Vector) int {
-	diff := v.sub(other)
+func (v Vector) Distance(other Vector) int {
+	diff := v.Sub(other)
 	x := abs(diff.X)
 	y := abs(diff.Y)
 	xy := abs(diff.X + diff.Y)
@@ -33,8 +33,8 @@ func (v Vector) distance(other Vector) int {
 	return max(x, y, xy)
 }
 
-func (v Vector) isUnit() bool {
-	if v.distance(newZeroVector()) == 1 {
+func (v Vector) IsUnit() bool {
+	if v.Distance(newZeroVector()) == 1 {
 		return true
 	}
 	return false

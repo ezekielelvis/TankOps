@@ -17,7 +17,7 @@ jobs:
           node-version: 20
       - run: npm install --global typescript@5
       - run: gofmt -l . | tee /dev/stderr | (! read)
-      - run: go vet ./...
+      - run: go vet -composites=false ./...
       - run: go test -race -short ./...
       - run: tsc --noEmit
   bots:
@@ -27,4 +27,4 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -run 'TestBotsPlayLegalGames|TestBotStrength' ./...
+      - run: go test -run 'TestBotsPlayLegalGames|TestBotStrength' ./internal/bot

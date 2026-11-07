@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"tank-ops/internal/bot"
 )
 
 var upgrader = websocket.Upgrader{
@@ -22,7 +24,7 @@ type RoomRequest struct {
 	code  string
 	chans RoomChans
 	// bot is non-zero when the player asked for a game against the computer.
-	bot BotLevel
+	bot bot.Level
 	// resumeToken is set when a player is trying to rejoin a running game.
 	resumeToken string
 }

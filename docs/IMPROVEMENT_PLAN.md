@@ -161,6 +161,8 @@ Also done since:
 - Phase 5: keyboard play (tab, q e a d z c, f, enter), pinch zoom, remembered mute, a three-page tutorial (first run, and the "how to play" button / `h`), screen-reader announcements.
 - Phase 6: multi-stage Dockerfile (not built in CI; Docker was not running when it was written), `/healthz`, `/metrics`, per-IP rate limit and connection cap.
 
+Code is organised into `cmd/`, `internal/game`, `internal/bot` and `internal/server` (see the README).
+
 Not done yet: new game mechanics (cover, pickups, tank types), more maps, and a hosted demo. Pinch zoom was written but only exercised with a mouse, not on a touch device.
 
 Findings along the way:

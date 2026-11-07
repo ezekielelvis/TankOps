@@ -1,8 +1,11 @@
-package main
+package server
 
 import (
 	"testing"
 	"time"
+
+	"tank-ops/internal/bot"
+	"tank-ops/internal/game"
 )
 
 func newChans() RoomChans {
@@ -24,7 +27,7 @@ func recv(t *testing.T, c RoomChans) RoomMessage {
 }
 
 func TestHumanVersusBotPlaysToTheEnd(t *testing.T) {
-	for _, level := range []BotLevel{BotEasy, BotMedium, BotHard} {
+	for _, level := range []bot.Level{bot.Easy, bot.Medium, bot.Hard} {
 		t.Run(level.String(), func(t *testing.T) {
 			hub := NewHub()
 			go hub.Run()
@@ -110,10 +113,10 @@ func TestQuitDuringGameAwardsWinToOpponent(t *testing.T) {
 	recv(t, p2)
 
 	p1.send <- PlayerMessage{msgType: PlayerQuitRoom}
-	if m := recv(t, p1); m.msgType != RoomGameFinished || m.gameResult != Lose {
+	if m := recv(t, p1); m.msgType != RoomGameFinished || m.gameResult != game.Lose {
 		t.Fatalf("quitter should lose, got %+v", m)
 	}
-	if m := recv(t, p2); m.msgType != RoomGameFinished || m.gameResult != Win {
+	if m := recv(t, p2); m.msgType != RoomGameFinished || m.gameResult != game.Win {
 		t.Fatalf("opponent should win, got %+v", m)
 	}
 	select {
@@ -199,7 +202,7 @@ func TestForfeitAfterGracePeriod(t *testing.T) {
 	p1, p2, _, _ := startTwoPlayerGame(t, room)
 
 	p1.send <- PlayerMessage{msgType: PlayerDisconnected}
-	if m := recv(t, p2); m.msgType != RoomGameFinished || m.gameResult != Win {
+	if m := recv(t, p2); m.msgType != RoomGameFinished || m.gameResult != game.Win {
 		t.Fatalf("remaining player should win after the grace period, got %+v", m)
 	}
 	select {

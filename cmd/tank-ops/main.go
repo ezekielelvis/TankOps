@@ -6,6 +6,8 @@ import (
 	_ "net/http/pprof" // registers on http.DefaultServeMux, served only when PPROF_ADDR is set
 	"os"
 	"strconv"
+
+	"tank-ops/internal/server"
 )
 
 func envOr(key, fallback string) string {
@@ -33,7 +35,7 @@ func main() {
 	addr := envOr("ADDR", "localhost:8000")
 	staticDir := envOr("STATIC_DIR", "web/dist")
 
-	hub := NewHub().WithLimits(
+	hub := server.NewHub().WithLimits(
 		envFloat("CONNECT_RATE", 2), // new connections per second per IP
 		envInt("CONNECT_BURST", 10),
 		envInt("MAX_CONNS_PER_IP", 20),
@@ -59,7 +61,7 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	mux.Handle("/metrics", metrics)
+	mux.Handle("/metrics", server.MetricsHandler())
 
 	slog.Info("tank-ops listening", "addr", addr, "static", staticDir)
 	if err := http.ListenAndServe(addr, mux); err != nil {

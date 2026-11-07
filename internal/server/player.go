@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"encoding/json"
@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"tank-ops/internal/bot"
+	"tank-ops/internal/game"
 )
 
 const (
@@ -36,7 +39,7 @@ type RoomChans struct {
 type PlayerMessage struct {
 	msgType     PlayerMessageType
 	roomCode    string
-	tankActions []TankAction
+	tankActions []game.TankAction
 	chans       RoomChans
 }
 
@@ -205,7 +208,7 @@ func (ps PlayerStateNotInRoom) handleClientMessage(cm ClientMessage, ok bool) bo
 			req.resumeToken = cm.Token
 		}
 		if cm.VsBot {
-			req.bot = BotLevel(cm.Difficulty)
+			req.bot = bot.Level(cm.Difficulty)
 		}
 		go func(req RoomRequest) {
 			ps.player.roomRequests <- req

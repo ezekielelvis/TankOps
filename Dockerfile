@@ -11,8 +11,9 @@ FROM golang:1.22-alpine AS server
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY *.go ./
-RUN CGO_ENABLED=0 go build -trimpath -o /tank-ops .
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -o /tank-ops ./cmd/tank-ops
 
 # Small runtime image
 FROM gcr.io/distroless/static-debian12:nonroot

@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -33,3 +33,6 @@ func (m *serverMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	row("tankops_resumes_total", "counter", "Players who resumed after a dropped connection.", m.resumes.Load())
 	row("tankops_rate_limited_total", "counter", "Connections refused by the rate limiter.", m.rateLimited.Load())
 }
+
+// MetricsHandler serves the counters in the Prometheus text format.
+func MetricsHandler() http.Handler { return metrics }

@@ -55,7 +55,7 @@ The bot plays by the same rules and sees only what you see. Levels:
 | medium | scores every move and shot: threats, cover, spread, the closing arena |
 | hard   | medium's shortlist, tested against many guesses of the enemy's position and orders using the real game rules, two turns deep. It also works out who resolves first from the turn results. |
 
-`go test -run TestBotStrength ./...` plays them against each other.
+`go test -run TestBotStrength ./internal/bot` plays them against each other.
 
 ## Development
 
@@ -70,14 +70,31 @@ Environment variables for the server: `ADDR` (default `localhost:8000`),
 
 Layout:
 
-- `main.go`, `hub.go` – HTTP server, websocket entry, room lookup
-- `room.go`, `player.go` – per-room and per-connection state machines
-- `gamestate.go` – the rules (pure, no networking)
-- `bot.go` – the computer opponent
-- `config.go` – maps and rules
-- `web/src` – the client; `web/dist` is served as-is after `tsc`
-- `tools/gen_assets` – generators for the sprites and sounds
-- `docs/protocol.md` – the websocket protocol (build your own client or bot)
+```
+cmd/tank-ops/        the executable: reads env vars, wires the HTTP server
+internal/game/       the rules, with no networking
+    vector.go          hex coordinates and distance
+    results.go         orders (TankAction) and the events a turn produces
+    state.go           GameState: resolving turns, visibility, shrinking
+    config.go          what clients are told at the start of a game
+    maps.go            the arenas and how to add one
+    sim.go             a small API for simulating and inspecting positions
+internal/bot/        the computer opponent
+    bot.go             Bot: Start / Observe / Plan, difficulty levels
+    view.go            what the bot knows (a player's-eye view of the results)
+    geometry.go        lines of fire, reachability
+    easy.go medium.go hard.go   one file per policy
+internal/server/     websockets and rooms
+    hub.go             accepts connections, finds or creates rooms
+    player.go          one connection's state machine
+    room.go            one game's state machine, turn timer, reconnect
+    botplayer.go       lets a bot sit in a room like a human
+    messages.go        the wire format and input validation
+    ratelimit.go metrics.go
+web/src/             the client; web/dist is served as-is after tsc
+tools/gen_assets/    generators for the sprites and sounds
+docs/protocol.md     the websocket protocol (build your own client or bot)
+```
 
 ### Regenerating art and sound
 
@@ -93,7 +110,7 @@ python3 tools/gen_assets/gen_sounds.py    # web/dist/assets/sounds.wav
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Ideas for first contributions: new
-maps in `config.go`, keyboard controls, better bot behaviour, accessibility.
+maps in `internal/game/maps.go`, keyboard controls, better bot behaviour, accessibility.
 The full roadmap is in [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md).
 
 ## License

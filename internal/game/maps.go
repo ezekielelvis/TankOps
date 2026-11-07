@@ -1,66 +1,6 @@
-package main
+package game
 
 import "math/rand/v2"
-
-type TankConfig struct {
-	Id int    `json:"id"`
-	P  Vector `json:"p"`
-}
-
-type SceneConfig struct {
-	P       Vector `json:"p"`
-	Variant int    `json:"variant"`
-}
-
-type ClientConfig struct {
-	PlayerTanks     []TankConfig  `json:"playerTanks"`
-	EnemyTanks      []TankConfig  `json:"enemyTanks"`
-	Hexes           []SceneConfig `json:"hexes"`
-	Sites           []SceneConfig `json:"sites"`
-	DriveRange      int           `json:"driveRange"`
-	VisibilityRange int           `json:"visibilityRange"`
-	FireRange       int           `json:"fireRange"`
-	Center          Vector        `json:"center"`
-}
-
-type GameConfig struct {
-	tanksP1         []TankConfig
-	tanksP2         []TankConfig
-	hexes           []SceneConfig
-	sites           []SceneConfig
-	driveRange      int
-	visibilityRange int
-	fireRange       int
-	p1First         bool
-	center          Vector
-	shrinkAfter     int
-	shrinkInterval  int
-	radius          int
-}
-
-func (gc GameConfig) ClientConfigs() (ClientConfig, ClientConfig) {
-	p1 := ClientConfig{
-		gc.tanksP1,
-		gc.tanksP2,
-		gc.hexes,
-		gc.sites,
-		gc.driveRange,
-		gc.visibilityRange,
-		gc.fireRange,
-		gc.center,
-	}
-	p2 := ClientConfig{
-		gc.tanksP2,
-		gc.tanksP1,
-		gc.hexes,
-		gc.sites,
-		gc.driveRange,
-		gc.visibilityRange,
-		gc.fireRange,
-		gc.center,
-	}
-	return p1, p2
-}
 
 func NewBasicConfig(swapPlayers, p1First bool) GameConfig {
 	center := Vector{2, 1}
@@ -90,7 +30,7 @@ func NewBasicConfig(swapPlayers, p1First bool) GameConfig {
 	}
 	radius := 0
 	for _, h := range hexes {
-		radius = max(radius, h.P.distance(center))
+		radius = max(radius, h.P.Distance(center))
 	}
 
 	return GameConfig{
@@ -142,10 +82,10 @@ func hexArena(center Vector, radius int, holes ...Vector) []SceneConfig {
 	for x := center.X - radius; x <= center.X+radius; x++ {
 		for y := center.Y - radius; y <= center.Y+radius; y++ {
 			p := Vector{x, y}
-			if p.distance(center) > radius || skip[p] {
+			if p.Distance(center) > radius || skip[p] {
 				continue
 			}
-			rel := p.sub(center)
+			rel := p.Sub(center)
 			hexes = append(hexes, SceneConfig{P: p, Variant: abs(rel.X+2*rel.Y) % 3})
 		}
 	}

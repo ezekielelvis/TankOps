@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"crypto/rand"
@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	mrand "math/rand/v2"
 	"time"
+
+	"tank-ops/internal/game"
 )
 
 type RoomMessageType int
@@ -29,15 +31,15 @@ const (
 
 type RoomMessage struct {
 	msgType     RoomMessageType
-	config      ClientConfig
+	config      game.ClientConfig
 	roomCode    string
 	token       string
-	turnResults []TurnResult
-	gameResult  GameResult
+	turnResults []game.TurnResult
+	gameResult  game.GameResult
 }
 
 type QueuedActions struct {
-	actions []TankAction
+	actions []game.TankAction
 	queued  bool
 }
 
@@ -55,7 +57,7 @@ type Room struct {
 	player1chans RoomChans
 	player2chans RoomChans
 
-	gamestate *GameState
+	gamestate *game.GameState
 
 	queuedP1 QueuedActions
 	queuedP2 QueuedActions
@@ -66,8 +68,8 @@ type Room struct {
 	// reconnection support
 	grace        time.Duration
 	tokens       [2]string
-	configs      [2]ClientConfig
-	history      [2][][]TurnResult // every turn's results, per seat, for replay
+	configs      [2]game.ClientConfig
+	history      [2][][]game.TurnResult // every turn's results, per seat, for replay
 	disconnected [2]bool
 	graceGen     [2]int
 	graceExpired chan graceExpiry
@@ -217,7 +219,7 @@ func (r *Room) stopTurnTimer() {
 	}
 }
 
-func (r *Room) QueueActions(actions []TankAction, p1 bool) bool {
+func (r *Room) QueueActions(actions []game.TankAction, p1 bool) bool {
 	if p1 {
 		r.queuedP1.queued = true
 		r.queuedP1.actions = actions
@@ -236,12 +238,12 @@ func (r *Room) ready() bool {
 
 func (r *Room) ClearActions() {
 	r.queuedP1.queued = false
-	r.queuedP1.actions = []TankAction{}
+	r.queuedP1.actions = []game.TankAction{}
 	r.queuedP2.queued = false
-	r.queuedP2.actions = []TankAction{}
+	r.queuedP2.actions = []game.TankAction{}
 }
 
-func (r *Room) Actions() ([]TankAction, []TankAction) {
+func (r *Room) Actions() ([]game.TankAction, []game.TankAction) {
 	return r.queuedP1.actions, r.queuedP2.actions
 }
 
@@ -266,7 +268,7 @@ func (r *Room) resolveTurn() {
 }
 
 // finish reports the result to both players and closes the room.
-func (r *Room) finish(res1, res2 GameResult) {
+func (r *Room) finish(res1, res2 game.GameResult) {
 	r.stopTurnTimer()
 	r.deliver(r.player1chans, RoomMessage{msgType: RoomGameFinished, gameResult: res1})
 	r.deliver(r.player2chans, RoomMessage{msgType: RoomGameFinished, gameResult: res2})
@@ -313,9 +315,9 @@ func (s RoomStateWaitingForP2) handleJoinRequest(req RoomRequest, ok bool) bool 
 
 	// Randomise who resolves first so neither side has a standing advantage.
 	p1First := mrand.IntN(2) == 0
-	s.r.gamestate = NewGameState(NewRandomConfig(p1First))
+	s.r.gamestate = game.NewGameState(game.NewRandomConfig(p1First))
 	cfg1, cfg2 := s.r.gamestate.ClientConfigs()
-	s.r.configs = [2]ClientConfig{cfg1, cfg2}
+	s.r.configs = [2]game.ClientConfig{cfg1, cfg2}
 	s.r.tokens = [2]string{newToken(), newToken()}
 	metrics.gamesStarted.Add(1)
 
@@ -389,11 +391,11 @@ func (s RoomStateRunning) handleJoinRequest(req RoomRequest, ok bool) bool {
 func (s RoomStateRunning) handlePlayerMessage(msg PlayerMessage, isP1 bool) {
 	switch msg.msgType {
 	case PlayerQuitRoom:
-		res1, res2 := Win, Win
+		res1, res2 := game.Win, game.Win
 		if isP1 {
-			res1 = Lose
+			res1 = game.Lose
 		} else {
-			res2 = Lose
+			res2 = game.Lose
 		}
 		s.r.finish(res1, res2)
 	case PlayerDisconnected:
@@ -438,11 +440,11 @@ func (s RoomStateRunning) handleGraceExpired(ge graceExpiry) {
 		r.abort() // nobody is left to tell
 		return
 	}
-	res1, res2 := Win, Win
+	res1, res2 := game.Win, game.Win
 	if ge.seat == 0 {
-		res1 = Lose
+		res1 = game.Lose
 	} else {
-		res2 = Lose
+		res2 = game.Lose
 	}
 	r.finish(res1, res2)
 }
