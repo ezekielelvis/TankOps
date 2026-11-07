@@ -156,7 +156,12 @@ Done (see the git log):
 - Phase 7: AI opponent at three levels, with menu buttons.
 - Phase 8: MIT license, original generated sprites and sounds (`tools/gen_assets`), community files, protocol docs.
 
-Not done yet: Phase 3 (reconnect, rematch), most of Phase 5 (keyboard, mute persistence, mobile pinch, tutorial), Phase 6 (Docker, metrics, rate limits), and more maps or mechanics.
+Also done since:
+- Phase 3: token-based reconnect with a 30 s grace period (the game pauses), turn replay on resume, automatic client retry with backoff, resume after a page refresh. There is no separate rematch flow: the room code stays in the input, and bot buttons start a fresh game.
+- Phase 5: keyboard play (tab, q e a d z c, f, enter), pinch zoom, remembered mute, a three-page tutorial (first run, and the "how to play" button / `h`), screen-reader announcements.
+- Phase 6: multi-stage Dockerfile (not built in CI; Docker was not running when it was written), `/healthz`, `/metrics`, per-IP rate limit and connection cap.
+
+Not done yet: new game mechanics (cover, pickups, tank types), more maps, and a hosted demo. Pinch zoom was written but only exercised with a mouse, not on a touch device.
 
 Findings along the way:
 - The original `outpost` map starts tanks adjacent and the first turn is a coin flip on who resolves first. The new maps start apart.

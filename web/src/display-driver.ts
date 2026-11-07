@@ -250,7 +250,12 @@ export class DisplayDriver {
       this.ctx.globalAlpha = 1;
       this.ctx.fillStyle = "black";
       const center = area.start.add(area.size.mul(0.5)).round();
-      this.ctx.fillText(modal.text || "", center.x, center.y);
+      const lines = (modal.text || "").split("\n");
+      const lineHeight = modal.baseFontSize * 1.35;
+      const firstY = center.y - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((line, i) => {
+        this.ctx.fillText(line, center.x, firstY + i * lineHeight);
+      });
 
       this.ctx.lineWidth = modal.crossStrokeWidth;
       this.ctx.beginPath();

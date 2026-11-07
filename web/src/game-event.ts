@@ -18,6 +18,7 @@ export enum GameEventType {
   ButtonPlayEasy,
   ButtonPlayMedium,
   ButtonPlayHard,
+  ButtonHelp,
   ButtonSendTurn,
   ButtonQuitGame,
   ButtonUnmute,
@@ -36,6 +37,7 @@ export type TypeOnlyEvent =
   | GameEventType.ButtonPlayEasy
   | GameEventType.ButtonPlayMedium
   | GameEventType.ButtonPlayHard
+  | GameEventType.ButtonHelp
   | GameEventType.ButtonSendTurn
   | GameEventType.ButtonQuitGame
   | GameEventType.ButtonUnmute
@@ -56,6 +58,9 @@ export type GameEvent =
   | {
       type: GameEventType.StartGame;
       config: GameConfig;
+      // set when the server can resume this game after a dropped connection
+      roomCode?: string;
+      token?: string;
     }
   | {
       type: GameEventType.ReceiveTurnResults;

@@ -322,6 +322,7 @@ export class UI {
 
   specialButtons: {
     joinRoom: StandardButton;
+    help: StandardButton;
     botButtons: StandardButton[];
     textInput: TextInput;
     sendTurn: StandardButton;
@@ -477,6 +478,16 @@ export class UI {
       newArea(1, 2, 2, 1),
     );
 
+    const buttonHelp = new StandardButton(
+      "how to play",
+      GameEventType.ButtonHelp,
+    );
+    mainMenuPanel.attachButton(
+      buttonHelp,
+      newArea(1, 0, 2, 1),
+      newArea(1, 0, 2, 1),
+    );
+
     const botButtons = [
       new StandardButton("easy bot", GameEventType.ButtonPlayEasy),
       new StandardButton("medium bot", GameEventType.ButtonPlayMedium),
@@ -491,6 +502,7 @@ export class UI {
       button.state = ButtonState.Inactive;
     });
     this.buttons.set(UIMode.Main, [
+      buttonHelp,
       buttonJoinRoom,
       buttonInputRoomCode,
       ...botButtons,
@@ -513,6 +525,7 @@ export class UI {
 
     this.specialButtons = {
       joinRoom: buttonJoinRoom,
+      help: buttonHelp,
       botButtons: botButtons,
       textInput: buttonInputRoomCode,
       sendTurn: buttonSendTurn,
@@ -634,6 +647,19 @@ export class UI {
     for (const button of this.specialButtons.botButtons) {
       button.state = state;
     }
+  }
+
+  public isSendTurnEnabled(): boolean {
+    return this.specialButtons.sendTurn.state === ButtonState.Normal;
+  }
+
+  // sound is on while the mute button (rather than unmute) is showing
+  public isSoundOn(): boolean {
+    return this.specialButtons.mute.state === ButtonState.Normal;
+  }
+
+  public isUnmuteAllowed(): boolean {
+    return this.specialButtons.unmute.state !== ButtonState.Inactive;
   }
 
   public setSendTurnAvailability(available: boolean) {

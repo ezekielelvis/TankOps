@@ -19,6 +19,23 @@ Open it in a browser, then either
 - pick **easy**, **medium** or **hard bot** to play the computer, or
 - type a room code and **join room**; share the code with a friend who joins the same room.
 
+### Controls
+
+| | mouse / touch | keyboard |
+| --- | --- | --- |
+| select and move a tank | press a tank, drag along hexes | `tab` picks a tank, `q e a d z c` step (same key back undoes) |
+| fire | hold on a tank, drag to aim | `f`, then `q e a d z c` to aim |
+| clear a tank's orders | | `backspace` |
+| send turn | send turn button | `enter` |
+| pan, zoom | drag, wheel, pinch | arrow keys, `+` `-` |
+| sound | mute button | `m` (remembered) |
+| help | how to play button | `h` |
+
+`q e` are up-left and up-right, `a d` left and right, `z c` down-left and
+down-right. A screen reader announces selections, orders and what happened
+each turn. The game pauses for 30 seconds if your connection drops, and a
+refreshed page rejoins the game it was in.
+
 ### How a turn works
 
 1. Give each tank one order: **move** (drag a path up to 5 hexes) or **fire** (pick one of six directions, range 3).

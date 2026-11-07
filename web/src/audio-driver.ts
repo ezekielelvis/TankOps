@@ -115,6 +115,13 @@ export class AudioDriver {
     };
   }
 
+  // Browsers keep audio suspended until a user gesture. Call this from one.
+  public unlock() {
+    if (this.audioCtx.state === "suspended") {
+      this.audioCtx.resume();
+    }
+  }
+
   public setSoundInGame(play: boolean) {
     if (this.nodes === null) {
       this.cachedGainLevels.game = play ? 1 : 0;

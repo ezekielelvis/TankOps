@@ -10,6 +10,7 @@ The server is authoritative; it only sends each player what they can see.
 {"type": 1, "vsBot": true, "difficulty": 2}     // private game vs the computer (1 easy, 2 medium, 3 hard)
 {"type": 2, "Actions": [ ... ]}                 // send this turn's orders
 {"type": 3}                                     // leave the room (forfeits a running game)
+{"type": 4, "roomCode": "AB12", "token": "..."} // resume a running game after a dropped connection
 ```
 
 An action is one of
@@ -30,7 +31,7 @@ Hex directions: `(1,0) (-1,0) (0,1) (0,-1) (1,-1) (-1,1)`. Distance is
 
 | type | name | payload |
 | ---- | ---- | ------- |
-| 1 | StartGame | `config`: tanks, hexes, obstacle sites, ranges, arena centre. `playerTanks` are yours. |
+| 1 | StartGame | `config`: tanks, hexes, obstacle sites, ranges, arena centre (`playerTanks` are yours); `roomCode` and `token` for resuming |
 | 2 | TurnResults | `turnResults`: ordered events you can see (see below) |
 | 3 | RoomJoined | you are in the room, waiting for an opponent |
 | 4 | RoomDisconnected | the room closed or could not be joined |
@@ -49,3 +50,19 @@ alternates every turn and is not announced.
 
 If both players have not sent orders within 90 seconds the server resolves
 the turn anyway; a player who sent nothing simply does nothing.
+
+## Reconnecting
+
+`StartGame` carries a `roomCode` and a secret `token` for your seat. If your
+connection drops, the server pauses the game and holds your seat for 30
+seconds. Open a new connection and send a type 4 message with the same
+`roomCode` and `token`. You then receive `RoomJoined`, `StartGame` again, and
+one `TurnResults` message for every turn played so far, in order, so the
+client can rebuild the board by replaying them. If the seat is gone (the grace
+period passed, or the token is wrong) you get `RoomDisconnected`.
+
+The token also lets a refreshed page replace its own old connection, even if
+the server has not noticed that connection die yet.
+
+While a player is disconnected nobody's turn resolves and the turn timer is
+stopped.

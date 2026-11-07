@@ -27,6 +27,8 @@ type ServerMessage =
   | {
       type: ServerMessageType.StartGame;
       config: GameConfig;
+      roomCode?: string;
+      token?: string;
     }
   | {
       type: ServerMessageType.TurnResults;
@@ -53,6 +55,7 @@ enum ClientMessageType {
   JoinRoom = 1,
   SendTurn = 2,
   QuitRoom = 3,
+  Resume = 4,
 }
 
 type ClientMessage =
@@ -68,16 +71,34 @@ type ClientMessage =
     }
   | {
       type: ClientMessageType.QuitRoom;
+    }
+  | {
+      type: ClientMessageType.Resume;
+      roomCode: string;
+      token: string;
     };
+
+const RECONNECT_MIN_MS = 500;
+const RECONNECT_MAX_MS = 5000;
 
 export class WsDriver {
   open: boolean = false;
-  conn: WebSocket;
+  conn!: WebSocket;
   notifier: Notifier;
+  private url: string;
+  private backoff = RECONNECT_MIN_MS;
 
   constructor(url: string, notifier: Notifier) {
     this.notifier = notifier;
-    this.conn = new WebSocket(url);
+    this.url = url;
+    this.connect();
+  }
+
+  // Connects, and keeps retrying with a growing delay whenever the
+  // connection drops. WsClose is only reported when an open connection is
+  // lost, so failed retries stay silent.
+  private connect() {
+    this.conn = new WebSocket(this.url);
     this.conn.onopen = () => this.handleOpen();
     this.conn.onclose = () => this.handleClose();
     this.conn.onmessage = (e) => this.handleMessage(e);
@@ -123,14 +144,24 @@ export class WsDriver {
     this.send(msg);
   }
 
+  public sendResume(roomCode: string, token: string) {
+    this.send({ type: ClientMessageType.Resume, roomCode, token });
+  }
+
   private handleOpen() {
     this.open = true;
+    this.backoff = RECONNECT_MIN_MS;
     this.notifier.notify({ type: GameEventType.WsOpen });
   }
 
   private handleClose() {
+    const wasOpen = this.open;
     this.open = false;
-    this.notifier.notify({ type: GameEventType.WsClose });
+    if (wasOpen) {
+      this.notifier.notify({ type: GameEventType.WsClose });
+    }
+    setTimeout(() => this.connect(), this.backoff);
+    this.backoff = Math.min(this.backoff * 2, RECONNECT_MAX_MS);
   }
 
   private handleMessage(e: MessageEvent) {
@@ -140,6 +171,8 @@ export class WsDriver {
         this.notifier.notify({
           type: GameEventType.StartGame,
           config: msg.config,
+          roomCode: msg.roomCode,
+          token: msg.token,
         });
         break;
       case ServerMessageType.TurnResults:

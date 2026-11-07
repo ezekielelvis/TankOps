@@ -236,6 +236,127 @@ export class Grid {
     this.recalculateTraversable();
   }
 
+  // ---- keyboard control -------------------------------------------------
+  // Mirrors what dragging does, one step at a time. Each method returns a
+  // short sentence for screen readers (or an empty string if nothing changed).
+
+  private kbTankId: number | null = null;
+
+  private kbTanks(): Tank[] {
+    return this.gameState.playerTanks.filter((t) => t.visible);
+  }
+
+  private kbBusy(): boolean {
+    return this.curMode === PointerMode.Animation;
+  }
+
+  private kbCurrent(): Tank | null {
+    if (this.kbTankId === null) return null;
+    return getTankById(this.gameState.playerTanks, this.kbTankId) || null;
+  }
+
+  private kbDescribe(tank: Tank): string {
+    return `tank ${tank.id} at ${tank.p.x}, ${tank.p.y}`;
+  }
+
+  private kbMarkChanged(tank: Tank) {
+    this.curTank = tank;
+    this.recalculateTraversable();
+    this.curTank = null;
+    this.saveOrder(tank.id);
+    this.notifier.notify({ type: GameEventType.TankManipulation });
+  }
+
+  public keyboardSelectTank(step: number): string {
+    if (this.kbBusy()) return "";
+    const tanks = this.kbTanks();
+    if (tanks.length === 0) return "no tanks to select";
+    const cur = tanks.findIndex((t) => t.id === this.kbTankId);
+    const next = tanks[(cur + step + tanks.length * 2) % tanks.length];
+    this.kbTankId = next.id;
+    // show where it can go, as picking it with the pointer would
+    this.curTank = next;
+    this.recalculateTraversable();
+    this.curTank = null;
+    return `selected ${this.kbDescribe(next)}`;
+  }
+
+  public keyboardDirection(dirIdx: number): string {
+    if (this.kbBusy()) return "";
+    const tank = this.kbCurrent();
+    if (tank === null) return "select a tank first, with tab";
+    const dir = idxToUnitVector(dirIdx);
+    if (dir === null) return "";
+
+    if (tank.shooting) {
+      tank.shootingDir = dirIdx;
+      this.kbMarkChanged(tank);
+      return "aiming that way";
+    }
+
+    this.curTank = tank;
+    this.recalculateTraversable();
+    this.curTank = null;
+    const last =
+      tank.path.length > 0 ? tank.path[tank.path.length - 1] : tank.p;
+    const next = last.add(dir);
+
+    // stepping back onto the previous hex undoes the last step
+    if (tank.path.length >= 2 && next.eq(tank.path[tank.path.length - 2])) {
+      tank.path.pop();
+      if (tank.path.length === 1) tank.path = [];
+      this.kbMarkChanged(tank);
+      return "step undone";
+    }
+    if (!this.gameState.availableHexes.has(next.toString())) {
+      return "cannot move there";
+    }
+    if (tank.path.length === 0) tank.path.push(tank.p);
+    tank.path.push(next);
+    this.kbMarkChanged(tank);
+    const left = this.config.driveRange - (tank.path.length - 1);
+    return `moving to ${next.x}, ${next.y}, ${left} steps left`;
+  }
+
+  public keyboardToggleFire(): string {
+    if (this.kbBusy()) return "";
+    const tank = this.kbCurrent();
+    if (tank === null) return "select a tank first, with tab";
+    if (tank.shooting) {
+      tank.shooting = false;
+      tank.shootingDir = 0;
+      this.removeOrder(tank.id);
+      this.notifier.notify({ type: GameEventType.TankManipulation });
+      this.curTank = tank;
+      this.recalculateTraversable();
+      this.curTank = null;
+      return "fire cancelled";
+    }
+    tank.path = [];
+    tank.shooting = true;
+    tank.shootingDir = 0;
+    this.gameState.availableHexes.clear();
+    this.gameState.conditionallyAvailableHexes.clear();
+    this.saveOrder(tank.id);
+    this.notifier.notify({ type: GameEventType.TankManipulation });
+    return "fire mode, choose a direction with q e a d z c";
+  }
+
+  public keyboardClearOrders(): string {
+    if (this.kbBusy()) return "";
+    const tank = this.kbCurrent();
+    if (tank === null) return "";
+    tank.path = [];
+    tank.shooting = false;
+    tank.shootingDir = 0;
+    this.removeOrder(tank.id);
+    this.curTank = tank;
+    this.recalculateTraversable();
+    this.curTank = null;
+    this.notifier.notify({ type: GameEventType.TankManipulation });
+    return "orders cleared";
+  }
+
   public tick() {
     this.animationResolver.animate();
     if (this.isPointerDown && this.curMode === PointerMode.TankNavigation) {
